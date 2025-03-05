@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '11'   # Ajuste conforme necessário
+          java-version: '19'  # Ajustado para evitar erro de compilação
 
       - name: Executar Testes do Backend
         working-directory: API
@@ -32,7 +32,7 @@ jobs:
       - name: Configurar Node.js para o Frontend
         uses: actions/setup-node@v3
         with:
-          node-version: '16'   # Ajuste conforme necessário
+          node-version: '16'
 
       - name: Instalar Dependências do Frontend
         working-directory: interface
