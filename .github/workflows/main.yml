@@ -1,34 +1,71 @@
-name: CI Estacionamento Web App
+# .github/workflows/ci-cd.yml
+
+name: CI/CD Pipeline - Frontend e Backend
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  build:
+  build_and_test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Checkout do repositório
+      - name: Checkout do Código
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      ## Backend: Testes com Spring Boot (Maven)
+      - name: Configurar Java para o Backend
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'   # Ajuste conforme necessário
+
+      - name: Executar Testes do Backend
+        working-directory: API
+        run: mvn test
+
+      ## Frontend: Testes com Vue
+      - name: Configurar Node.js para o Frontend
         uses: actions/setup-node@v3
         with:
-          node-version: '20.x'
+          node-version: '16'   # Ajuste conforme necessário
 
-      - name: Install dependencies
+      - name: Instalar Dependências do Frontend
+        working-directory: interface
         run: npm install
-        working-directory: interface
 
-      - name: Run tests
-        run: npm test
+      - name: Executar Testes do Frontend
         working-directory: interface
+        run: npm run test
 
-      - name: Build project
-        run: npm run build
-        working-directory: interface
+      ## Após a aprovação dos testes, realizar build das imagens Docker
+
+      - name: Instalar Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.17.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Build das Imagens Docker
+        run: docker-compose build
+
+  deploy:
+    needs: build_and_test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v3
+
+      - name: Instalar Docker Compose
+        run: |
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.17.3/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          docker-compose --version
+
+      - name: Deploy da Aplicação
+        run: docker-compose up -d
