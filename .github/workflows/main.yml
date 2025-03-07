@@ -70,8 +70,8 @@ jobs:
 
       - name: Instalar dependências do frontend
         working-directory: interface
-        run: npm ci
+        run: npm i --force
 
       - name: Executar testes do frontend
         working-directory: interface
-        run: npm test
+        run: npm run test:unit
