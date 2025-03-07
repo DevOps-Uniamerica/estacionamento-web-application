@@ -28,7 +28,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Compilar e testar backend
-        working-directory: estacionamento
+        working-directory: API
         run: mvn clean verify
         
   frontend:
