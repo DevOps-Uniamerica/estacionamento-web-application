@@ -28,7 +28,7 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Compilar e testar backend
-        run: mvn clean verify --file estacionamento/pom.xml
+        run: mvn clean verify 
 
   frontend:
     name: Build e Teste do Frontend
@@ -51,8 +51,8 @@ jobs:
 
       - name: Instalar dependências do frontend
         working-directory: interface
-        run: npm ci
+        run: npm i --force
 
       - name: Executar testes do frontend
         working-directory: interface
-        run: npm test
+        run: npm run test:unit
