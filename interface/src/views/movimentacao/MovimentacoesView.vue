@@ -2,7 +2,7 @@
     <div class="container-fluid p-4">
         <div class="row mb-4">
             <div class="col-md-10 text-start">
-                <p class="fs-4 fw-semibold">Movimentacao</p>
+                <p class="fs-4 fw-semibold">Movimentacaao</p>
             </div>
             <div class="col-md-2 align-self-center">
                 <div class="d-grid gap-2">
