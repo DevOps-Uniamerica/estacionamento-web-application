@@ -97,21 +97,22 @@ jobs:
       - name: Build e Push da Imagem Docker do Frontend
         run: |
           docker buildx build --file interface/Dockerfile --tag ${{ secrets.DOCKER_USERNAME }}/estacionamento-web-application-frontend:feat-docker --push interface/
-
   deploy:
-    name: Deploy da Stack com Docker Compose
+    name: Deploy dos Containers com Docker Compose
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
-    env:
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
     steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
+    - name: Checkout do código
+      uses: actions/checkout@v3
 
-      - name: Instalar Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
+    - name: Instalar Docker Compose
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y docker-compose
 
-      - name: Deploy da Stack
-        run: docker-compose -f docker-compose.yml up -d
+    - name: Deploy do Backend e Banco (API)
+      working-directory: API
+      run: docker-compose -f docker-compose.yml up -d
+
+    - name: Deploy do Frontend (interface)
+      working-directory: interface
+      run: docker-compose -f docker-compose.yml up -d
