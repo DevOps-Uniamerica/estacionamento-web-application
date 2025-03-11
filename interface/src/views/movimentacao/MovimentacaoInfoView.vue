@@ -157,7 +157,7 @@
         const segundos: number = Math.floor((diferenca % 60000) / 1000); // 1 segundo = 1000 milissegundos
         // Retornar a diferença formatada
         this.tempoEstacionado = `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}:${segundos.toString().padStart(2, '0')}`;
-  ;
+  
       },
       segundosParaHoras(segundos: number) {
         const horas = Math.floor(segundos / 3600);
