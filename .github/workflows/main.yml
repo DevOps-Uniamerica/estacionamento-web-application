@@ -75,3 +75,28 @@ jobs:
       - name: Executar testes do frontend
         working-directory: interface
         run: npm run test:unit
+
+
+  deploy-frontend:
+    name: Deploy Frontend na EC2
+    needs: [frontend]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar chave SSH
+        run: |
+          echo "${{ secrets.FRONTEND_KEY }}" > frontend_key.pem
+          chmod 600 frontend_key.pem
+
+      - name: Build do Frontend
+        working-directory: interface
+        run: npm run build
+
+      - name: Copiar build para EC2 do frontend
+        run: |
+          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }}:/usr/share/nginx/html
+
+        
