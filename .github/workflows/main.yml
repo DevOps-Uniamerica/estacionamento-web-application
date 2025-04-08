@@ -101,6 +101,12 @@ jobs:
 
       - name: Copiar build para EC2 do frontend
         run: |
-          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }}:/usr/share/nginx/html
-
-        
+          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.FRONTEND_USER }}/temp-deploy/
+      
+      - name: Mover build para o NGINX com sudo
+        run: |
+          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
+            sudo rm -rf /usr/share/nginx/html/*
+            sudo cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
+            sudo rm -rf /home/${{ secrets.FRONTEND_USER }}/temp-deploy/*
+          EOF
