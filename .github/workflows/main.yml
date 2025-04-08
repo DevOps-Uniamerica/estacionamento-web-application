@@ -90,6 +90,10 @@ jobs:
         run: |
           echo "${{ secrets.FRONTEND_KEY }}" > frontend_key.pem
           chmod 600 frontend_key.pem
+          
+      - name: Instala Dependecias
+        working-directory: interface
+        run: npm i --force
 
       - name: Build do Frontend
         working-directory: interface
