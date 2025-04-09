@@ -99,15 +99,13 @@ jobs:
         working-directory: interface
         run: npm run build
 
-      - name: Copiar build para EC2 do frontend
+      - name: Enviar arquivos para a VM
         run: |
-          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.AWS_USER }}/temp-deploy/
+          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.FRONTEND_USER }}/temp-deploy/
       
-      - name: Mover build para o NGINX com sudo
+      - name: Atualizar arquivos em /usr/share/nginx/html
         run: |
-          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.AWS_USER }} << 'EOF'
-            sudo su 
-            rm -rf /usr/share/nginx/html/*
-            cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
-            rm -rf /home/${{ secrets.FRONTEND_USER }}/temp-deploy/*
+          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
+            sudo rm -rf /usr/share/nginx/html/*
+            sudo cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
           EOF
