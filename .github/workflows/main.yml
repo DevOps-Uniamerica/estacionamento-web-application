@@ -67,15 +67,17 @@ jobs:
         run: |
            scp -i backend_key.pem -o StrictHostKeyChecking=no -r API ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }}:/home/${{ secrets.AWS_USER }}/
       
-      - name: Build e Run Conteiner 
+      - name: Build e rodar container via SSH
         run: |
-            ssh -i backend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }} << 'EOF'
-              sudo cd /home/${{ secrets.AWS_USER }}/API
-              docker stop estacionamento-app || true
-              docker rm estacionamento-app || true
-              docker run -d --name estacionamento-app --restart=always -p 8080:8080 estacionamento-app
-             EOF
-             
+           ssh -i backend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }} <<EOF
+             cd /home/${{ secrets.AWS_USER }}/API
+             docker build -t estacionamento-app .
+             docker stop estacionamento-app || true
+             docker rm estacionamento-app || true
+             docker run -d --name estacionamento-app --restart=always -p 8080:8080 estacionamento-app
+           EOF
+
+           
   frontend:
     name: Build e Teste do Frontend
     runs-on: ubuntu-latest
