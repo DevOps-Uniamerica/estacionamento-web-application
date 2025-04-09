@@ -106,7 +106,7 @@ jobs:
       - name: Mover build para o NGINX com sudo
         run: |
           ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.AWS_USER }} << 'EOF'
-            rm -rf /usr/share/nginx/html/*
-            cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
-            rm -rf /home/${{ secrets.FRONTEND_USER }}/temp-deploy/*
+            sudo rm -rf /usr/share/nginx/html/*
+            sudo cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
+            sudo rm -rf /home/${{ secrets.FRONTEND_USER }}/temp-deploy/*
           EOF
