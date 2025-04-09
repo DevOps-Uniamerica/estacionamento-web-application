@@ -101,11 +101,11 @@ jobs:
 
       - name: Enviar arquivos para a VM
         run: |
-          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.FRONTEND_USER }}/temp-deploy/
+          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.AWS_USER }}:/home/${{ secrets.AWS_USER }}/temp-deploy/
       
       - name: Atualizar arquivos em /usr/share/nginx/html
         run: |
-          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
+          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
             sudo rm -rf /usr/share/nginx/html/*
-            sudo cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
+            sudo cp -r /home/${{ secrets.AWS_USER }}/temp-deploy/* /usr/share/nginx/html/
           EOF
