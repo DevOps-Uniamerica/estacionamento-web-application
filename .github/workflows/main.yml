@@ -49,6 +49,33 @@ jobs:
         working-directory: API   # Ajuste para o diretório onde seu pom.xml está localizado (ex.: 'API' ou 'estacionamento')
         run: mvn clean verify
 
+  deploy-backend:
+    name: Deploy Backend na EC2
+    needs: [backend]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar chave SSH
+        run: |
+          echo "${{ secrets.BACKEND_KEY }}" > backend_key.pem
+          chmod 600 backend_key.pem
+
+      - name: Copiar build para EC2 do frontend
+        run: |
+           scp -i backend_key.pem -o StrictHostKeyChecking=no -r api ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }}:/home/${{ secrets.AWS_USER }}/
+      
+      - name: Build e Run Conteiner 
+        run: |
+            ssh -i backend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }} << 'EOF'
+              sudo cd /home/${{ secrets.AWS_USER }}/api
+              docker stop estacionamento-app || true
+              docker rm estacionamento-app || true
+              docker run -d --name estacionamento-app --restart=always -p 8080:8080 estacionamento-app
+             EOF
+             
   frontend:
     name: Build e Teste do Frontend
     runs-on: ubuntu-latest
