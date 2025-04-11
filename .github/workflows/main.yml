@@ -49,6 +49,35 @@ jobs:
         working-directory: API   # Ajuste para o diretório onde seu pom.xml está localizado (ex.: 'API' ou 'estacionamento')
         run: mvn clean verify
 
+  deploy-backend:
+    name: Deploy Backend na EC2
+    needs: [backend]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar chave SSH
+        run: |
+          echo "${{ secrets.BACKEND_KEY }}" > backend_key.pem
+          chmod 600 backend_key.pem
+
+      - name: Copiar build para EC2 do frontend
+        run: |
+           scp -i backend_key.pem -o StrictHostKeyChecking=no -r API ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }}:/home/${{ secrets.AWS_USER }}/
+      
+      - name: Build e rodar container via SSH
+        run: |
+           ssh -i backend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }} <<EOF
+             cd /home/${{ secrets.AWS_USER }}/API
+             docker build -t estacionamento-app .
+             docker stop estacionamento-app || true
+             docker rm estacionamento-app || true
+             docker run -d --name estacionamento-app --restart=always -p 8080:8080 estacionamento-app
+           EOF
+
+           
   frontend:
     name: Build e Teste do Frontend
     runs-on: ubuntu-latest
@@ -99,13 +128,14 @@ jobs:
         working-directory: interface
         run: npm run build
 
-      - name: Enviar arquivos para a VM
+      - name: Copiar build para EC2 do frontend
         run: |
-          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.FRONTEND_USER }}/temp-deploy/
+          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.AWS_USER }}/temp-deploy/
       
-      - name: Atualizar arquivos em /usr/share/nginx/html
+      - name: Mover build para o NGINX com sudo
         run: |
-          ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.FRONTEND_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
-            sudo rm -rf /usr/share/nginx/html/*
-            sudo cp -r /home/${{ secrets.FRONTEND_USER }}/temp-deploy/* /usr/share/nginx/html/
-          EOF
+            ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
+              sudo rm -rf /usr/share/nginx/html/*
+              sudo cp -r /home/${{ secrets.AWS_USER }}/temp-deploy/* /usr/share/nginx/html/
+              sudo rm -rf /home/${{ secrets.AWS_USER }}/temp-deploy/*
+            EOF
