@@ -1,12 +1,13 @@
 import { Condutor } from '@/model/Condutor';
 import axios, { AxiosInstance } from 'axios';
 
+
 export class CondutorClient {
   private axiosClient: AxiosInstance;
 
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: `/api`,
+      baseURL: "http://localhost:8080/api",
       headers: { 'Content-type': 'application/json' }
     });
   }

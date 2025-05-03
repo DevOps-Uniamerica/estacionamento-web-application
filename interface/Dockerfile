@@ -1,16 +1,11 @@
-FROM node:18-alpine AS build-frontend
+FROM node:16-alpine AS build
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm install
-
-COPY . ./
+RUN npm i --force
+COPY . .
 RUN npm run build
 
-FROM nginx:stable-alpine
-
-COPY --from=build-frontend /app/dist /usr/share/nginx/html
-
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
-
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+CMD ["nginx", "-g", "daemon off;"]
