@@ -1,12 +1,13 @@
 import { Modelo } from '@/model/Modelo'
 import axios, { AxiosInstance } from 'axios'
+import { environment } from '@/environment/environment.prod';
 
 export class ModeloClient {
   private axiosClient: AxiosInstance
 
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: `/api`,
+      baseURL: environment.apiUrl,
       headers: { 'Content-type': 'application/json' }
     })
   }
