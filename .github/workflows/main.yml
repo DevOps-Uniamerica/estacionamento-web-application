@@ -49,9 +49,31 @@ jobs:
         working-directory: API   # Ajuste para o diretório onde seu pom.xml está localizado (ex.: 'API' ou 'estacionamento')
         run: mvn clean verify
 
-  deploy-backend:
-    name: Deploy Backend na EC2
+  build-push-backend:
+    name: Build da imagem docker e envio para o Docker Hub
     needs: [backend]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build e push da Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./API
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/api:latest
+
+  deploy-backend:
+    name: Deploy Backend na VM
+    needs: [build-push-backend]
     runs-on: ubuntu-latest
 
     steps:
@@ -60,24 +82,16 @@ jobs:
 
       - name: Configurar chave SSH
         run: |
-          echo "${{ secrets.BACKEND_KEY }}" > backend_key.pem
-          chmod 600 backend_key.pem
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-      - name: Copiar build para EC2 do frontend
+      - name: Copiar build para VM do frontend
         run: |
-           scp -i backend_key.pem -o StrictHostKeyChecking=no -r API ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }}:/home/${{ secrets.AWS_USER }}/
-      
-      - name: Build e rodar container via SSH
-        run: |
-           ssh -i backend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.BACKEND_HOST }} <<EOF
-             cd /home/${{ secrets.AWS_USER }}/API
-             docker build -t estacionamento-app .
-             docker stop estacionamento-app || true
-             docker rm estacionamento-app || true
-             docker run -d --name estacionamento-app --restart=always -p 8080:8080 estacionamento-app
-           EOF
-
-           
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          kubectl set image deployment/backend backend=theandrew1/api:latest --record
+          EOF
+          
   frontend:
     name: Build e Teste do Frontend
     runs-on: ubuntu-latest
