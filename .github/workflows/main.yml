@@ -88,7 +88,7 @@ jobs:
 
       - name: Copiar build para VM do frontend
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
           kubectl set image deployment/backend backend=theandrew1/api:latest --record
           EOF
           
