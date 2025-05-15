@@ -152,25 +152,12 @@ jobs:
 
       - name: Configurar chave SSH
         run: |
-          echo "${{ secrets.FRONTEND_KEY }}" > frontend_key.pem
-          chmod 600 frontend_key.pem
-          
-      - name: Instala Dependecias
-        working-directory: interface
-        run: npm i --force
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-      - name: Build do Frontend
-        working-directory: interface
-        run: npm run build
-
-      - name: Copiar build para EC2 do frontend
+      - name: Copiar build para VM do frontend
         run: |
-          scp -i frontend_key.pem -o StrictHostKeyChecking=no -r interface/dist/* ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }}:/home/${{ secrets.AWS_USER }}/temp-deploy/
-      
-      - name: Mover build para o NGINX com sudo
-        run: |
-            ssh -i frontend_key.pem -o StrictHostKeyChecking=no ${{ secrets.AWS_USER }}@${{ secrets.FRONTEND_HOST }} << 'EOF'
-              sudo rm -rf /usr/share/nginx/html/*
-              sudo cp -r /home/${{ secrets.AWS_USER }}/temp-deploy/* /usr/share/nginx/html/
-              sudo rm -rf /home/${{ secrets.AWS_USER }}/temp-deploy/*
-            EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
+          kubectl set image deployment/frontend frontend=theandrew1/api:latest --record
+          EOF
