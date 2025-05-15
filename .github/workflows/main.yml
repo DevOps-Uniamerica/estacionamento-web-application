@@ -89,7 +89,7 @@ jobs:
       - name: Copiar build para VM do frontend
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          kubectl set image deployment/backend backend=theandrew1/api:latest --record
+          kubectl set image deployment/backend backend=fpeiter/api:latest --record -n main
           EOF
           
   frontend:
@@ -159,5 +159,5 @@ jobs:
       - name: Atualizar deployment na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          kubectl set image deployment/frontend frontend=theandrew1/api:latest --record
+          kubectl set image deployment/frontend frontend=fpeiter/front:latest --record -n main
           EOF
