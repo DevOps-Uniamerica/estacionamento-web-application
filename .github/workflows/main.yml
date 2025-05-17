@@ -69,7 +69,7 @@ jobs:
         with:
           context: ./API
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/api:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/backend-main:latest
 
   deploy-backend:
     name: Deploy Backend na VM
@@ -89,7 +89,7 @@ jobs:
       - name: Atualizar deployment backend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/backend backend=fpeiter/api:latest --record -n main'
+          sudo -i -u minikube bash -c 'kubectl set image deployment/estacionamento-backend estacionamento-backend=fpeiter/backend-main:latest --record -n main'
           EOF
           
   frontend:
@@ -139,7 +139,7 @@ jobs:
         with:
           context: ./interface
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/front:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/frontend-main:latest
 
   deploy-frontend:
     name: Atualizar deployment na VM
@@ -159,5 +159,5 @@ jobs:
       - name: Atualizar deployment frontend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/frontend frontend=fpeiter/front:latest --record -n main'
+          sudo -i -u minikube bash -c 'kubectl set image deployment/estacionamento-frontend estacionamento-frontend=fpeiter/frontend-main:latest --record -n main'
           EOF
