@@ -69,7 +69,7 @@ jobs:
         with:
           context: ./API
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/api:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/backend-develop:latest
 
   deploy-backend:
     name: Deploy Backend na VM
@@ -139,7 +139,7 @@ jobs:
         with:
           context: ./interface
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/front:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/frontend-develop:latest
 
   deploy-frontend:
     name: Atualizar deployment na VM
