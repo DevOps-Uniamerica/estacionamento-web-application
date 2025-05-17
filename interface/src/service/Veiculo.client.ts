@@ -6,7 +6,7 @@ export class VeiculoClient {
 
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: "http://estacionamento-backend.main.svc.cluster.local/api",
+      baseURL: "/api",
       headers: { 'Content-type': 'application/json' }
     })
   }

@@ -5,10 +5,10 @@ import axios, { AxiosInstance } from 'axios'
 
 export class MovimentacaoClient {
   private axiosClient: AxiosInstance
-
+//http://estacionamento-backend.main.svc.cluster.local
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: "http://estacionamento-backend.main.svc.cluster.local/api",
+      baseURL: "/api",
       headers: { 'Content-type': 'application/json' }
     })
   }
