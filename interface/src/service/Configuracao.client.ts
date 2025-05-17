@@ -5,7 +5,7 @@ export class ConfiguracaoClient {
   private axiosClient: AxiosInstance
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: "/api",
+      baseURL: "http://localhost:8080/api",
       headers: { 'Content-type': 'application/json' }
     })
   }
