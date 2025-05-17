@@ -6,7 +6,7 @@ export class MarcaClient {
 
   constructor() {
     this.axiosClient = axios.create({
-      baseURL: "http://localhost:8080/api",
+      baseURL: "http://estacionamento-backend.main.svc.cluster.local/api",
       headers: { 'Content-type': 'application/json' }
     })
   }
