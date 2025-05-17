@@ -2,9 +2,9 @@ name: CI Pipeline
  
 on:
   push:
-    branches: [ main ]
+    branches: [ develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ develop ]
 
 jobs:
   backend:
@@ -89,7 +89,9 @@ jobs:
       - name: Atualizar deployment backend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/backend backend=fpeiter/api:latest --record -n main'
+          minikube status >/dev/null || minikube start --driver=docker
+          kubectl config use-context minikube
+          kubectl set image deployment/backend backend=fpeiter/api:latest --record -n develop
           EOF
           
   frontend:
@@ -159,5 +161,7 @@ jobs:
       - name: Atualizar deployment frontend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/frontend frontend=fpeiter/front:latest --record -n main'
+          minikube status >/dev/null || minikube start --driver=docker
+          kubectl config use-context minikube
+          kubectl set image deployment/frontend frontend=fpeiter/front:latest --record -n develop
           EOF
