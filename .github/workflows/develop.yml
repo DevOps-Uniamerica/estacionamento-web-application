@@ -89,7 +89,9 @@ jobs:
       - name: Atualizar deployment backend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/estacionamento-backend estacionamento-backend=fpeiter/backend-develop:latest --record -n develop'
+          sudo -i -u minikube
+          kubectl set image deployment/estacionamento-backend backend=fpeiter/backend-main:latest -n develop
+          kubectl rollout restart deployment estacionamento-backend -n develop
           EOF
           
   frontend:
@@ -159,5 +161,7 @@ jobs:
       - name: Atualizar deployment frontend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          sudo -i -u minikube bash -c 'kubectl set image deployment/estacionamento-frontend estacionamento-frontend=fpeiter/frontend-develop:latest --record -n develop'
+          sudo -i -u minikube
+          kubectl set image deployment/estacionamento-frontend frontend=fpeiter/frontend-main:latest -n develop
+          kubectl rollout restart deployment estacionamento-frontend -n develop
           EOF
