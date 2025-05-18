@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: main
+data:
+  API_URL: "http://estacionamento-backend.main.svc.cluster.local/api"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: main
+data:
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres.main.svc.cluster.local:5432/estacionamento"
+  SPRING_PROFILES_ACTIVE: "prod"
