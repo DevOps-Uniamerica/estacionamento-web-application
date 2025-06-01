@@ -13,15 +13,11 @@ services:
 
   frontend:
     build:
-      context: ../interface
-      dockerfile: docker/Dockerfile
-    image: estacionamento-frontend:latest
+    image: fpeiter/estacionamento-frontend:latest
 
   backend:
     build:
-      context: ../API
-      dockerfile: docker/Dockerfile
-    image: estacionamento-backend:latest
+    image: fpeiter/estacionamento-backend:latest
     ports:
       - "8080:8080"
     environment:
