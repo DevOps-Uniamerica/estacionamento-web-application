@@ -1,0 +1,63 @@
+- name: Provisionar VM com Docker e rodar docker-compose
+  hosts: gcp
+  become: true
+
+  vars:
+    docker_user: "fpeiter"
+    docker_password: "{{ docker_password }}"
+    docker_compose_path: "/home/ubuntu/docker-compose.yml"
+
+  tasks:
+    - name: Atualiza os pacotes
+      apt:
+        update_cache: yes
+
+    - name: Instala pacotes necessários
+      apt:
+        name:
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: yes
+
+    - name: Adiciona usuário ubuntu ao grupo docker
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Inicia e habilita o serviço Docker
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Login no Docker Hub
+      become: false
+      environment:
+        HOME: "/home/ubuntu"
+      command: >
+        docker login -u {{ docker_user }} -p {{ docker_password }}
+
+    - name: Copia docker-compose.yml para a VM
+      copy:
+        src: ../files/docker-compose.yml
+        dest: "{{ docker_compose_path }}"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Retira todos os conteiner parados
+      command: docker-compose -f {{ docker_compose_path }} up -d
+      args:
+        chdir: /home/ubuntu
+
+    - name: Puxa as últimas imagens do Docker Compose
+      command: docker container prune -f
+      args:
+        chdir: /home/ubuntu
+
+    - name: Executa docker-compose up -d
+      command: docker-compose -f {{ docker_compose_path }} up -d
+      args:
+        chdir: /home/ubuntu
