@@ -140,7 +140,7 @@ jobs:
         run: export GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/ansible/credentials.json
 
       - name: Executar Terraform
-        working-directory: terraform
+        working-directory: ansible
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
         run: |
