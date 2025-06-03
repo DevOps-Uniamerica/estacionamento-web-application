@@ -42,14 +42,3 @@ output "vm_ip_address" {
   description = "IP público da instância"
   value       = google_compute_instance.vm.network_interface[0].access_config[0].nat_ip
 }
-
-output "ssh_private_key" {
-  description = "Chave SSH privada para acesso à instância"
-  value       = tls_private_key.vm_ssh_key.private_key_openssh
-  sensitive   = true 
-}
-
-output "ssh_public_key" {
-  description = "Chave SSH pública configurada na instância"
-  value       = tls_private_key.vm_ssh_key.public_key_openssh
-}
