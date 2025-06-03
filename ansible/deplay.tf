@@ -1,7 +1,6 @@
 provider "google" {
   project = "celtic-shape-452222-c9"
   region  = "southamerica-east1"
-  credentials = file("credentials.json")
 }
 
 resource "tls_private_key" "vm_ssh_key" {
