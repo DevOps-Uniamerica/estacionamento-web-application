@@ -20,7 +20,7 @@ resource "google_compute_instance" "vm" {
   }
 
   metadata = {
-    ssh-keys = "${{ secrets.GCP_USER }}:${{ secrets.SSH_KEY_PUB }}"
+    ssh-keys = "${var.gcp_user}:${var.ssh_key_pub}"
   }
 
   tags = ["ssh", "http-server"]
