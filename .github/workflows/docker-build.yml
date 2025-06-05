@@ -148,8 +148,14 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
         run: |
           terraform init
-          terraform import google_compute_instance.vm projects/celtic-shape-452222-c9/zones/southamerica-east1-a/instances/vm-aplicacao
-          terraform import google_compute_firewall.firewall projects/celtic-shape-452222-c9/global/firewalls/allow-ssh-and-app
+          terraform import \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB" \
+            google_compute_instance.vm projects/celtic-shape-452222-c9/zones/southamerica-east1-a/instances/vm-aplicacao
+          terraform import \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB" \
+            google_compute_firewall.firewall projects/celtic-shape-452222-c9/global/firewalls/allow-ssh-and-app
           terraform apply -auto-approve \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB"
