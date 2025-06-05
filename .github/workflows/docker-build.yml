@@ -148,7 +148,9 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
         run: |
           terraform init
-          terraform plan
+          terraform plan \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB"
           terraform apply -auto-approve \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB"
