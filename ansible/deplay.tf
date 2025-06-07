@@ -28,12 +28,12 @@ resource "google_compute_instance" "vm" {
 }
 
 resource "google_compute_firewall" "firewall" {
-  name    = "allow-ssh-and-app"
+  name    = "allow-ssh-prometheus-grafana-app"
   network = "default"
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "8080"] 
+    ports    = ["22", "8080","3000","9090"] 
   }
 
   source_ranges = ["0.0.0.0/0"] 
