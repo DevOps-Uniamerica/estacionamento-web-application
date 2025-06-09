@@ -159,4 +159,30 @@ jobs:
           terraform apply -auto-approve \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB"
-          terraform output -raw vm_ip_address > ip.txt
+
+      - name: Obter IP da VM
+        id: pegar_ip
+        run: |
+          echo "vm_ip=$(terraform output -raw vm_ip_address)" >> $GITHUB_OUTPUT
+
+  ansible:
+    name: Configurar VM com Ansible
+    runs-on: ubuntu-latest
+    needs: [terraform]
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Instalar Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible
+
+      - name: Criar chave SSH
+        run: |
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Criar inventário
+        run: |
+          echo "${{ needs.terraform.outputs.vm_ip }} ansible_user=${{ secrets.GCP_USER }} ansible_ssh_private_key_file=~/.ssh/id_rsa" > ansible/inventory.ini
