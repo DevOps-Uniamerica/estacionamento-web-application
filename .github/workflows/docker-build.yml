@@ -122,6 +122,7 @@ jobs:
           
   terraform:
     name: Provisionar infraestrutura com Terraform
+    needs: [build-push-backend, build-push-frontend]
     runs-on: ubuntu-latest
     env:
       GCP_USER: ${{ secrets.GCP_USER }}
