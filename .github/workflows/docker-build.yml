@@ -78,6 +78,9 @@ jobs:
         run: |
           echo "${{ needs.terraform.outputs.vm_ip }} ansible_user=${{ secrets.GCP_USER }} ansible_ssh_private_key_file=~/.ssh/id_rsa" > ansible/inventory.ini
 
+      - name: Verificar conteúdo do inventory
+        run: cat ansible/inventory.ini
+
       - name: Executar Ansible
         run: |
           ansible-playbook -i ansible/inventory.ini ansible/playbooks/setup_docker_build.yml \
