@@ -80,5 +80,5 @@ jobs:
 
       - name: Executar Ansible
         run: |
-          ansible-playbook -i ansible/inventory.ini ansible/playbook.yml \
+          ansible-playbook -i ansible/hosts/inventory.ini ansible/playbooks/playbook.yml \
             -e "docker_user=${{ secrets.DOCKER_USERNAME }} docker_password=${{ secrets.DOCKER_PASSWORD }}"
