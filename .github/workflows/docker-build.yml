@@ -161,6 +161,7 @@ jobs:
             -var="ssh_key_pub=$SSH_KEY_PUB"
 
       - name: Obter IP da VM
+        working-directory: ansible
         id: pegar_ip
         run: |
           echo "vm_ip=$(terraform output -raw vm_ip_address)" >> $GITHUB_OUTPUT
