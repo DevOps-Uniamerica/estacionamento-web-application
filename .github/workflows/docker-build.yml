@@ -1,5 +1,5 @@
-name: CI Pipeline 
- 
+name: CI Pipeline
+
 on:
   push:
     branches: [ docker-build ]
@@ -119,7 +119,52 @@ jobs:
           context: ./interface
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/estacionamento-frontend:latest
-          
+
+  terraform-gke:
+    name: Provisionar cluster GKE
+    needs: [build-push-frontend]
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+      GKE_CLUSTER_NAME: ${{ secrets.GKE_CLUSTER_NAME }}
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.7.4'
+
+      - name: Criar credenciais GCP
+        run: echo '${{ secrets.GCP_SA_KEY }}' > ${{ github.workspace }}/ansible/credentials.json
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ansible
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
+
+      - name: Terraform Plan e Apply
+        run: |
+          terraform plan -out=tfplan -input=false \
+            -var="project_id=$GCP_PROJECT" \
+            -var="region=$GCP_REGION" \
+            -var="cluster_name=$GKE_CLUSTER_NAME" \
+            -var="gcs_bucket=$GCS_BUCKET"
+          terraform apply -input=false tfplan
+        working-directory: ansible
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
+
+      - name: Configurar credenciais kubectl
+        run: |
+          gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+          gcloud container clusters get-credentials $GKE_CLUSTER_NAME --region $GCP_REGION --project $GCP_PROJECT
+
   terraform:
     name: Provisionar infraestrutura com Terraform
     needs: [build-push-backend, build-push-frontend]
