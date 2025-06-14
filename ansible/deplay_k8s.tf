@@ -2,29 +2,18 @@ terraform {
   required_version = ">= 1.1.0"
   required_providers {
     google = {
-      source  = "hashicorp/google"
+      source  = "hashicorp/google",
       version = "~> 4.0"
     }
     google-beta = {
-      source  = "hashicorp/google-beta"
+      source  = "hashicorp/google-beta",
       version = "~> 4.0"
     }
   }
-
-  backend "gcs" {}
+  # Removido backend para estado remoto (pode ser configurado via CLI ao init)
 }
 
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
-
-provider "google-beta" {
-  alias   = "beta"
-  project = var.project_id
-  region  = var.region
-}
-
+# Usar provider já definido no deplay.tf original para evitar duplicação
 resource "google_container_cluster" "primary" {
   name     = var.cluster_name
   location = var.region
@@ -44,7 +33,7 @@ resource "google_container_node_pool" "primary_nodes" {
   node_config {
     machine_type = var.machine_type
     oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
+      "https://www.googleapis.com/auth/cloud-platform",
     ]
   }
 }
