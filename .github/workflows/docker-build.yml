@@ -1,5 +1,5 @@
 name: CI Pipeline
-
+ 
 on:
   push:
     branches: [ docker-build ]
@@ -50,7 +50,7 @@ jobs:
         run: mvn clean verify
 
   build-push-backend:
-    name: Build da imagem docker back e envio para o Docker Hub
+    name: Build da imagem docker e envio para o Docker Hub
     needs: [backend]
     runs-on: ubuntu-latest
 
@@ -99,7 +99,7 @@ jobs:
         run: npm run test:unit
 
   build-push-frontend:
-    name: Build da imagem docker front e envio para o Docker Hub
+    name: Build da imagem docker e envio para o Docker Hub
     needs: [frontend]
     runs-on: ubuntu-latest
 
@@ -120,55 +120,10 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/estacionamento-frontend:latest
 
-  terraform-gke:
-    name: Provisionar cluster GKE
-    needs: [build-push-frontend]
-    runs-on: ubuntu-latest
-    env:
-      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
-      GCP_REGION: ${{ secrets.GCP_REGION }}
-      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-      GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
-      GKE_CLUSTER_NAME: ${{ secrets.GKE_CLUSTER_NAME }}
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.7.4'
-
-      - name: Criar credenciais GCP
-        run: echo '${{ secrets.GCP_SA_KEY }}' > ${{ github.workspace }}/ansible/credentials.json
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ansible
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
-
-      - name: Terraform Plan e Apply
-        run: |
-          terraform plan -out=tfplan -input=false \
-            -var="project_id=$GCP_PROJECT" \
-            -var="region=$GCP_REGION" \
-            -var="cluster_name=$GKE_CLUSTER_NAME" \
-            -var="gcs_bucket=$GCS_BUCKET"
-          terraform apply -input=false tfplan
-        working-directory: ansible
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/ansible/credentials.json
-
-      - name: Configurar credenciais kubectl
-        run: |
-          gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
-          gcloud container clusters get-credentials $GKE_CLUSTER_NAME --region $GCP_REGION --project $GCP_PROJECT
-
   terraform:
     name: Provisionar infraestrutura com Terraform
-    needs: [build-push-backend, build-push-frontend]
     runs-on: ubuntu-latest
+    needs: [build-push-backend, build-push-frontend]
     env:
       GCP_USER: ${{ secrets.GCP_USER }}
       SSH_KEY_PUB: ${{ secrets.SSH_KEY_PUB }}
@@ -196,52 +151,12 @@ jobs:
           terraform import \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB" \
-            google_compute_instance.vm projects/celtic-shape-452222-c9/zones/southamerica-east1-a/instances/vm-aplicacao || true
+            google_compute_instance.vm projects/celtic-shape-452222-c9/zones/southamerica-east1-a/instances/vm-aplicacao
           terraform import \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB" \
-            google_compute_firewall.firewall projects/celtic-shape-452222-c9/global/firewalls/allow-ssh-and-app || true
+            google_compute_firewall.firewall projects/celtic-shape-452222-c9/global/firewalls/allow-ssh-and-app
           terraform apply -auto-approve \
             -var="gcp_user=$GCP_USER" \
             -var="ssh_key_pub=$SSH_KEY_PUB"
-
-      - name: Obter IP da VM
-        working-directory: ansible
-        id: pegar_ip
-        run: |
-          echo "vm_ip=$(terraform output -raw vm_ip_address)" >> $GITHUB_OUTPUT
-          
-    outputs:
-      vm_ip: ${{ steps.pegar_ip.outputs.vm_ip }}
-
-  ansible:
-    name: Configurar VM com Ansible
-    runs-on: ubuntu-latest
-    needs: [terraform]
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
-
-      - name: Instalar Ansible
-        run: |
-          sudo apt update
-          sudo apt install -y ansible
-
-      - name: Criar chave SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Criar inventário
-        run: |
-          echo "[gcp]" > ansible/inventory.ini
-          echo "${{ needs.terraform.outputs.vm_ip }} ansible_user=${{ secrets.GCP_USER }} ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> ansible/inventory.ini
-
-      - name: Verificar conteúdo do inventory
-        run: cat ansible/inventory.ini
-
-      - name: Executar Ansible
-        run: |
-          ansible-playbook -i ansible/inventory.ini ansible/playbooks/setup_docker_build.yml \
-            -e "docker_user=${{ secrets.DOCKER_USERNAME }} docker_password=${{ secrets.DOCKER_PASSWORD }}"
+          terraform output -raw vm_ip_address > ip.txt
