@@ -1,7 +1,10 @@
+name: CI Pipeline
 on:
   push:
-    branches: [ k8s-prod ]
-  workflow_dispatch:
+    branches: [ docker-build ]
+  pull_request:
+    branches: [ docker-build ]
+
 
 jobs:
   build-backend:
