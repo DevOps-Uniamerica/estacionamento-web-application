@@ -2,7 +2,7 @@ name: Deploy Kubernetes - Produção
 
 on:
   push:
-    branches: [ k8s-prod ]
+    branches: [ docker-build ]
   workflow_dispatch:
 
 jobs:
