@@ -1,3 +1,5 @@
+name: Deploy Kubernetes - Produção
+
 on:
   push:
     branches: [ k8s-prod ]

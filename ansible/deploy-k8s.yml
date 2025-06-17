@@ -1,0 +1,346 @@
+---
+- name: Deploy da aplicação no cluster Kubernetes GCP
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    cluster_name: "{{ cluster_name }}"
+    cluster_location: "{{ cluster_location }}"
+    project_id: "celtic-shape-452222-c9"
+    docker_user: "{{ docker_user }}"
+    namespace: "estacionamento"
+
+  tasks:
+    - name: Instalar dependências necessárias
+      pip:
+        name:
+          - kubernetes
+          - google-auth
+          - google-cloud-container
+        state: present
+
+    - name: Configurar kubectl para conectar ao cluster GKE
+      shell: |
+        gcloud container clusters get-credentials {{ cluster_name }} \
+          --location {{ cluster_location }} \
+          --project {{ project_id }}
+
+    - name: Criar namespace da aplicação
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Criar ConfigMap para configuração do banco
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: postgres-config
+            namespace: "{{ namespace }}"
+          data:
+            POSTGRES_DB: "estacionamento"
+            POSTGRES_USER: "postgres"
+            POSTGRES_PASSWORD: "postgres"
+
+    - name: Criar PersistentVolumeClaim para o banco PostgreSQL
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: postgres-pvc
+            namespace: "{{ namespace }}"
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 5Gi
+
+    - name: Deploy do PostgreSQL
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: postgres-deployment
+            namespace: "{{ namespace }}"
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: postgres
+            template:
+              metadata:
+                labels:
+                  app: postgres
+              spec:
+                containers:
+                - name: postgres
+                  image: postgres:15-alpine
+                  env:
+                  - name: POSTGRES_DB
+                    valueFrom:
+                      configMapKeyRef:
+                        name: postgres-config
+                        key: POSTGRES_DB
+                  - name: POSTGRES_USER
+                    valueFrom:
+                      configMapKeyRef:
+                        name: postgres-config
+                        key: POSTGRES_USER
+                  - name: POSTGRES_PASSWORD
+                    valueFrom:
+                      configMapKeyRef:
+                        name: postgres-config
+                        key: POSTGRES_PASSWORD
+                  ports:
+                  - containerPort: 5432
+                  volumeMounts:
+                  - name: postgres-storage
+                    mountPath: /var/lib/postgresql/data
+                volumes:
+                - name: postgres-storage
+                  persistentVolumeClaim:
+                    claimName: postgres-pvc
+
+    - name: Criar Service para PostgreSQL
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: postgres-service
+            namespace: "{{ namespace }}"
+          spec:
+            selector:
+              app: postgres
+            ports:
+            - port: 5432
+              targetPort: 5432
+            type: ClusterIP
+
+    - name: Deploy do Backend (Spring Boot)
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: backend-deployment
+            namespace: "{{ namespace }}"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: backend
+            template:
+              metadata:
+                labels:
+                  app: backend
+              spec:
+                containers:
+                - name: backend
+                  image: "{{ docker_user }}/estacionamento-backend:latest"
+                  env:
+                  - name: SPRING_DATASOURCE_URL
+                    value: "jdbc:postgresql://postgres-service:5432/estacionamento"
+                  - name: SPRING_DATASOURCE_USERNAME
+                    value: "postgres"
+                  - name: SPRING_DATASOURCE_PASSWORD
+                    value: "postgres"
+                  ports:
+                  - containerPort: 8080
+                  readinessProbe:
+                    httpGet:
+                      path: /actuator/health
+                      port: 8080
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
+                  livenessProbe:
+                    httpGet:
+                      path: /actuator/health
+                      port: 8080
+                    initialDelaySeconds: 60
+                    periodSeconds: 30
+
+    - name: Criar Service para Backend
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: backend-service
+            namespace: "{{ namespace }}"
+          spec:
+            selector:
+              app: backend
+            ports:
+            - port: 8080
+              targetPort: 8080
+            type: ClusterIP
+
+    - name: Criar ConfigMap para configuração do Nginx (Frontend)
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: nginx-config
+            namespace: "{{ namespace }}"
+          data:
+            default.conf: |
+              server {
+                  listen 80;
+                  server_name localhost;
+                  
+                  location / {
+                      root /usr/share/nginx/html;
+                      index index.html index.htm;
+                      try_files $uri $uri/ /index.html;
+                  }
+                  
+                  location /api/ {
+                      proxy_pass http://backend-service:8080/;
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto $scheme;
+                  }
+                  
+                  error_page 500 502 503 504 /50x.html;
+                  location = /50x.html {
+                      root /usr/share/nginx/html;
+                  }
+              }
+
+    - name: Deploy do Frontend (Vue.js com Nginx)
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: frontend-deployment
+            namespace: "{{ namespace }}"
+          spec:
+            replicas: 2
+            selector:
+              matchLabels:
+                app: frontend
+            template:
+              metadata:
+                labels:
+                  app: frontend
+              spec:
+                containers:
+                - name: frontend
+                  image: "{{ docker_user }}/estacionamento-frontend:latest"
+                  ports:
+                  - containerPort: 80
+                  volumeMounts:
+                  - name: nginx-config
+                    mountPath: /etc/nginx/conf.d
+                volumes:
+                - name: nginx-config
+                  configMap:
+                    name: nginx-config
+
+    - name: Criar Service para Frontend
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: frontend-service
+            namespace: "{{ namespace }}"
+          spec:
+            selector:
+              app: frontend
+            ports:
+            - port: 80
+              targetPort: 80
+            type: LoadBalancer
+
+    - name: Aguardar pods do PostgreSQL ficarem prontos
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=postgres
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 300
+
+    - name: Aguardar pods do Backend ficarem prontos
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=backend
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 300
+
+    - name: Aguardar pods do Frontend ficarem prontos
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - app=frontend
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 300
+
+    - name: Obter IP externo do LoadBalancer
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        name: frontend-service
+        namespace: "{{ namespace }}"
+      register: frontend_service
+
+    - name: Exibir informações do deploy
+      debug:
+        msg: |
+          Deploy realizado com sucesso!
+          Namespace: {{ namespace }}
+          
+          Serviços criados:
+          - PostgreSQL: postgres-service:5432
+          - Backend: backend-service:8080  
+          - Frontend: frontend-service:80
+          
+          {% if frontend_service.resources[0].status.loadBalancer.ingress is defined %}
+          IP Externo da aplicação: {{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
+          Acesse a aplicação em: http://{{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
+          {% else %}
+          LoadBalancer ainda está sendo provisionado. Execute o comando abaixo para verificar o IP:
+          kubectl get service frontend-service -n {{ namespace }}
+          {% endif %}
+
+    - name: Verificar status dos pods
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+      register: pod_status
+
+    - name: Exibir status dos pods
+      debug:
+        msg: |
+          Status dos Pods:
+          {% for pod in pod_status.resources %}
+          - {{ pod.metadata.name }}: {{ pod.status.phase }}
+          {% endfor %}
