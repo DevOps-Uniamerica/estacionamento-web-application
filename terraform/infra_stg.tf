@@ -1,7 +1,7 @@
 provider "google" {
   project = "infraestrutura-devops-stg"
   region  = "southamerica-east1"
-  credentials = file("C:/Users/Luis/Documents/Mensal4/final/stg/gcp-key.json") #- Credenciais locais apenas para teste local, na pipe deve ser utilizado o secrets do git
+  #credentials = file("C:/Users/Luis/Documents/Mensal4/final/stg/gcp-key.json") #- Credenciais locais apenas para teste local, na pipe deve ser utilizado o secrets do git
 }
 
 resource "google_container_cluster" "k8s_stg" {
@@ -24,8 +24,7 @@ resource "google_container_node_pool" "k8s_stg_nodes" {
 
   node_config {
     machine_type = "e2-medium"
-    disk_type    = "pd-standard"
-    disk_size_gb = 20
+    
 
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
