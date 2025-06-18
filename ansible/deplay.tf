@@ -1,4 +1,4 @@
-provider "google" {
+/*provider "google" {
   project = "celtic-shape-452222-c9"
   region  = "southamerica-east1"
 }
@@ -28,12 +28,12 @@ resource "google_compute_instance" "vm" {
 }
 
 resource "google_compute_firewall" "firewall" {
-  name    = "allow-ssh-and-app"
+  name    = "allow-ssh-prometheus-grafana-app"
   network = "default"
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "8080"] 
+    ports    = ["22", "8080","3000","9090"] 
   }
 
   source_ranges = ["0.0.0.0/0"] 
@@ -43,3 +43,4 @@ output "vm_ip_address" {
   description = "IP público da instância"
   value       = google_compute_instance.vm.network_interface[0].access_config[0].nat_ip
 }
+*/
