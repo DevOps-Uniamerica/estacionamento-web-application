@@ -126,7 +126,7 @@ jobs:
 
       - name: Executar Terraform
         id: terraform
-        working-directory: .
+        working-directory: terraform
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/credentials.json
         run: |
