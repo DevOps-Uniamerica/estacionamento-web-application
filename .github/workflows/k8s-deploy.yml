@@ -232,9 +232,11 @@ jobs:
           pip3 install ansible kubernetes google-auth google-cloud-container
 
       - name: Instalar Ansible Kubernetes Collection
+        working-directory: ansible
         run: ansible-galaxy collection install kubernetes.core
 
       - name: Executar Ansible Deploy
+        working-directory: ansible
         run: |
           ansible-playbook -i k8s-inventory.ini deploy-k8s.yml \
             -e cluster_name=$CLUSTER_NAME \
