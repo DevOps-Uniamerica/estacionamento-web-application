@@ -9,7 +9,7 @@
     cluster_location: "{{ cluster_location }}"
     project_id: "celtic-shape-452222-c9"
     docker_user: "{{ docker_user }}"
-    namespace: "estacionamento"
+    app_namespace: "estacionamento"
 
   tasks:
     - name: Instalar dependências necessárias
@@ -28,7 +28,7 @@
 
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
-        name: "{{ namespace }}"
+        name: "{{ app_namespace }}"
         api_version: v1
         kind: Namespace
         state: present
@@ -40,7 +40,7 @@
           kind: ConfigMap
           metadata:
             name: postgres-config
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           data:
             POSTGRES_DB: "estacionamento"
             POSTGRES_USER: "postgres"
@@ -53,7 +53,7 @@
           kind: PersistentVolumeClaim
           metadata:
             name: postgres-pvc
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
             accessModes:
               - ReadWriteOnce
@@ -68,7 +68,7 @@
           kind: Deployment
           metadata:
             name: postgres-deployment
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
             replicas: 1
             selector:
@@ -103,6 +103,29 @@
                   volumeMounts:
                   - name: postgres-storage
                     mountPath: /var/lib/postgresql/data
+                  resources:
+                    requests:
+                      memory: "256Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "512Mi"
+                      cpu: "500m"
+                  readinessProbe:
+                    exec:
+                      command:
+                        - /bin/sh
+                        - -c
+                        - pg_isready -U postgres
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  livenessProbe:
+                    exec:
+                      command:
+                        - /bin/sh
+                        - -c
+                        - pg_isready -U postgres
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
                 volumes:
                 - name: postgres-storage
                   persistentVolumeClaim:
@@ -115,7 +138,7 @@
           kind: Service
           metadata:
             name: postgres-service
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
             selector:
               app: postgres
@@ -124,6 +147,38 @@
               targetPort: 5432
             type: ClusterIP
 
+    - name: Aguardar PostgreSQL ficar pronto
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ app_namespace }}"
+        label_selectors:
+          - app=postgres
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 600
+
+    - name: Verificar status do PostgreSQL
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ app_namespace }}"
+        label_selectors:
+          - app=postgres
+      register: postgres_pods
+
+    - name: Debug PostgreSQL
+      debug:
+        msg: |
+          PostgreSQL Pods Status:
+          {% for pod in postgres_pods.resources %}
+          - Name: {{ pod.metadata.name }}
+          - Phase: {{ pod.status.phase }}
+          - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
+          {% endfor %}
+
     - name: Deploy do Backend (Spring Boot)
       kubernetes.core.k8s:
         definition:
@@ -131,9 +186,9 @@
           kind: Deployment
           metadata:
             name: backend-deployment
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
-            replicas: 2
+            replicas: 1
             selector:
               matchLabels:
                 app: backend
@@ -145,6 +200,7 @@
                 containers:
                 - name: backend
                   image: "{{ docker_user }}/estacionamento-backend:latest"
+                  imagePullPolicy: Always
                   env:
                   - name: SPRING_DATASOURCE_URL
                     value: "jdbc:postgresql://postgres-service:5432/estacionamento"
@@ -152,20 +208,33 @@
                     value: "postgres"
                   - name: SPRING_DATASOURCE_PASSWORD
                     value: "postgres"
+                  - name: JAVA_OPTS
+                    value: "-Xmx512m -Xms256m"
                   ports:
                   - containerPort: 8080
+                  resources:
+                    requests:
+                      memory: "512Mi"
+                      cpu: "250m"
+                    limits:
+                      memory: "1Gi"
+                      cpu: "500m"
                   readinessProbe:
                     httpGet:
                       path: /actuator/health
                       port: 8080
-                    initialDelaySeconds: 30
+                    initialDelaySeconds: 60
                     periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 3
                   livenessProbe:
                     httpGet:
                       path: /actuator/health
                       port: 8080
-                    initialDelaySeconds: 60
+                    initialDelaySeconds: 120
                     periodSeconds: 30
+                    timeoutSeconds: 5
+                    failureThreshold: 3
 
     - name: Criar Service para Backend
       kubernetes.core.k8s:
@@ -174,7 +243,7 @@
           kind: Service
           metadata:
             name: backend-service
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
             selector:
               app: backend
@@ -183,6 +252,59 @@
               targetPort: 8080
             type: ClusterIP
 
+    - name: Aguardar Backend ficar pronto (com timeout maior)
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ app_namespace }}"
+        label_selectors:
+          - app=backend
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 900
+      register: backend_wait_result
+      ignore_errors: true
+
+    - name: Verificar status do Backend se timeout
+      when: backend_wait_result.failed
+      block:
+        - name: Obter logs do Backend
+          kubernetes.core.k8s_info:
+            api_version: v1
+            kind: Pod
+            namespace: "{{ app_namespace }}"
+            label_selectors:
+              - app=backend
+          register: backend_pods
+
+        - name: Mostrar logs do Backend
+          shell: |
+            kubectl logs -n {{ app_namespace }} {{ backend_pods.resources[0].metadata.name }} --tail=50
+          register: backend_logs
+          when: backend_pods.resources | length > 0
+
+        - name: Debug Backend
+          debug:
+            msg: |
+              Backend não ficou pronto em 15 minutos!
+              
+              Pods Status:
+              {% for pod in backend_pods.resources %}
+              - Name: {{ pod.metadata.name }}
+              - Phase: {{ pod.status.phase }}
+              - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
+              - Restart Count: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
+              {% endfor %}
+              
+              Logs:
+              {{ backend_logs.stdout if backend_logs is defined else 'Não foi possível obter logs' }}
+
+        - name: Falhar se Backend não estiver pronto
+          fail:
+            msg: "Backend não ficou pronto após 15 minutos"
+
     - name: Criar ConfigMap para configuração do Nginx (Frontend)
       kubernetes.core.k8s:
         definition:
@@ -190,7 +312,7 @@
           kind: ConfigMap
           metadata:
             name: nginx-config
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           data:
             default.conf: |
               server {
@@ -209,6 +331,9 @@
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                       proxy_set_header X-Forwarded-Proto $scheme;
+                      proxy_connect_timeout 30s;
+                      proxy_send_timeout 30s;
+                      proxy_read_timeout 30s;
                   }
                   
                   error_page 500 502 503 504 /50x.html;
@@ -224,9 +349,9 @@
           kind: Deployment
           metadata:
             name: frontend-deployment
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
-            replicas: 2
+            replicas: 1
             selector:
               matchLabels:
                 app: frontend
@@ -238,11 +363,31 @@
                 containers:
                 - name: frontend
                   image: "{{ docker_user }}/estacionamento-frontend:latest"
+                  imagePullPolicy: Always
                   ports:
                   - containerPort: 80
+                  resources:
+                    requests:
+                      memory: "128Mi"
+                      cpu: "100m"
+                    limits:
+                      memory: "256Mi"
+                      cpu: "200m"
                   volumeMounts:
                   - name: nginx-config
                     mountPath: /etc/nginx/conf.d
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 10
+                    periodSeconds: 5
+                  livenessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 30
+                    periodSeconds: 10
                 volumes:
                 - name: nginx-config
                   configMap:
@@ -255,7 +400,7 @@
           kind: Service
           metadata:
             name: frontend-service
-            namespace: "{{ namespace }}"
+            namespace: "{{ app_namespace }}"
           spec:
             selector:
               app: frontend
@@ -264,37 +409,11 @@
               targetPort: 80
             type: LoadBalancer
 
-    - name: Aguardar pods do PostgreSQL ficarem prontos
+    - name: Aguardar Frontend ficar pronto
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
-        namespace: "{{ namespace }}"
-        label_selectors:
-          - app=postgres
-        wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
-        wait_timeout: 300
-
-    - name: Aguardar pods do Backend ficarem prontos
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ namespace }}"
-        label_selectors:
-          - app=backend
-        wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
-        wait_timeout: 300
-
-    - name: Aguardar pods do Frontend ficarem prontos
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ namespace }}"
+        namespace: "{{ app_namespace }}"
         label_selectors:
           - app=frontend
         wait: true
@@ -308,14 +427,15 @@
         api_version: v1
         kind: Service
         name: frontend-service
-        namespace: "{{ namespace }}"
+        namespace: "{{ app_namespace }}"
       register: frontend_service
 
     - name: Exibir informações do deploy
       debug:
         msg: |
-          Deploy realizado com sucesso!
-          Namespace: {{ namespace }}
+          🎉 Deploy realizado com sucesso!
+          
+          Namespace: {{ app_namespace }}
           
           Serviços criados:
           - PostgreSQL: postgres-service:5432
@@ -323,24 +443,26 @@
           - Frontend: frontend-service:80
           
           {% if frontend_service.resources[0].status.loadBalancer.ingress is defined %}
-          IP Externo da aplicação: {{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
-          Acesse a aplicação em: http://{{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
+          🌐 IP Externo: {{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
+          🚀 Acesse: http://{{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
           {% else %}
-          LoadBalancer ainda está sendo provisionado. Execute o comando abaixo para verificar o IP:
-          kubectl get service frontend-service -n {{ namespace }}
+          ⏳ LoadBalancer sendo provisionado...
+          Execute: kubectl get service frontend-service -n {{ app_namespace }}
           {% endif %}
 
-    - name: Verificar status dos pods
+    - name: Verificar status final dos pods
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Pod
-        namespace: "{{ namespace }}"
-      register: pod_status
+        namespace: "{{ app_namespace }}"
+      register: final_pod_status
 
-    - name: Exibir status dos pods
+    - name: Exibir status final
       debug:
         msg: |
-          Status dos Pods:
-          {% for pod in pod_status.resources %}
+          📊 Status Final dos Pods:
+          {% for pod in final_pod_status.resources %}
           - {{ pod.metadata.name }}: {{ pod.status.phase }}
+            Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
+            Restarts: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
           {% endfor %}
