@@ -391,7 +391,21 @@
                     limits:
                       memory: "1Gi"
                       cpu: "500m"
-                  # HEALTH CHECKS REMOVIDOS - apenas aguarda o container iniciar
+                  # HEALTH CHECKS SIMPLES - apenas verifica se a porta está aberta
+                  readinessProbe:
+                    tcpSocket:
+                      port: 8080
+                    initialDelaySeconds: 60
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    failureThreshold: 6
+                  livenessProbe:
+                    tcpSocket:
+                      port: 8080
+                    initialDelaySeconds: 90
+                    periodSeconds: 20
+                    timeoutSeconds: 5
+                    failureThreshold: 3
 
     - name: Criar Service para Backend
       kubernetes.core.k8s:
@@ -409,7 +423,7 @@
               targetPort: 8080
             type: ClusterIP
 
-    - name: Aguardar Backend ficar pronto (sem health checks)
+    - name: Aguardar Backend ficar pronto
       block:
         - name: Aguardar Backend container iniciar
           kubernetes.core.k8s_info:
@@ -420,14 +434,10 @@
               - app=backend
             wait: true
             wait_condition:
-              type: ContainersReady
+              type: Ready
               status: "True"
-            wait_timeout: 300
+            wait_timeout: 400
           register: backend_wait_result
-
-        - name: Aguardar alguns segundos para estabilizar
-          pause:
-            seconds: 30
 
       rescue:
         - name: Diagnóstico Backend em caso de falha
@@ -454,7 +464,7 @@
         - name: Debug Backend detalhado
           debug:
             msg: |
-              ❌ Backend não ficou pronto em 5 minutos!
+              ❌ Backend não ficou pronto em 6+ minutos!
               
               {{ backend_debug_logs.stdout }}
 
