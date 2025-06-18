@@ -1,16 +1,13 @@
----
-- name: Deploy da aplicação no cluster Kubernetes GCP
+ name: Deploy da aplicação no cluster Kubernetes GCP
   hosts: localhost
   connection: local
   gather_facts: false
-
   vars:
     cluster_name: "{{ cluster_name }}"
     cluster_location: "{{ cluster_location }}"
     project_id: "celtic-shape-452222-c9"
     docker_user: "{{ docker_user }}"
     app_namespace: "estacionamento"
-
   tasks:
     - name: Instalar dependências necessárias
       pip:
