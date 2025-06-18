@@ -1,465 +1,282 @@
- name: Deploy da aplicação no cluster Kubernetes GCP
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  vars:
-    cluster_name: "{{ cluster_name }}"
-    cluster_location: "{{ cluster_location }}"
-    project_id: "celtic-shape-452222-c9"
-    docker_user: "{{ docker_user }}"
-    app_namespace: "estacionamento"
-  tasks:
-    - name: Instalar dependências necessárias
-      pip:
-        name:
-          - kubernetes
-          - google-auth
-          - google-cloud-container
-        state: present
+name: Deploy Kubernetes - Produção
 
-    - name: Configurar kubectl para conectar ao cluster GKE
-      shell: |
-        gcloud container clusters get-credentials {{ cluster_name }} \
-          --location {{ cluster_location }} \
-          --project {{ project_id }}
+on:
+  push:
+    branches: [ docker-build ]
+  workflow_dispatch:
 
-    - name: Criar namespace da aplicação
-      kubernetes.core.k8s:
-        name: "{{ app_namespace }}"
-        api_version: v1
-        kind: Namespace
-        state: present
+jobs:
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/testdb
+      SPRING_DATASOURCE_USERNAME: testuser
+      SPRING_DATASOURCE_PASSWORD: testpass
 
-    - name: Criar ConfigMap para configuração do banco
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: postgres-config
-            namespace: "{{ app_namespace }}"
-          data:
-            POSTGRES_DB: "estacionamento"
-            POSTGRES_USER: "postgres"
-            POSTGRES_PASSWORD: "postgres"
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
 
-    - name: Criar PersistentVolumeClaim para o banco PostgreSQL
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: postgres-pvc
-            namespace: "{{ app_namespace }}"
-          spec:
-            accessModes:
-              - ReadWriteOnce
-            resources:
-              requests:
-                storage: 5Gi
+      - name: Configurar JDK 20
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '20'
 
-    - name: Deploy do PostgreSQL
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: postgres-deployment
-            namespace: "{{ app_namespace }}"
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: postgres
-            template:
-              metadata:
-                labels:
-                  app: postgres
-              spec:
-                containers:
-                - name: postgres
-                  image: postgres:15-alpine
-                  env:
-                  - name: POSTGRES_DB
-                    valueFrom:
-                      configMapKeyRef:
-                        name: postgres-config
-                        key: POSTGRES_DB
-                  - name: POSTGRES_USER
-                    valueFrom:
-                      configMapKeyRef:
-                        name: postgres-config
-                        key: POSTGRES_USER
-                  - name: POSTGRES_PASSWORD
-                    valueFrom:
-                      configMapKeyRef:
-                        name: postgres-config
-                        key: POSTGRES_PASSWORD
-                  ports:
-                  - containerPort: 5432
-                  volumeMounts:
-                  - name: postgres-storage
-                    mountPath: /var/lib/postgresql/data
-                  resources:
-                    requests:
-                      memory: "256Mi"
-                      cpu: "250m"
-                    limits:
-                      memory: "512Mi"
-                      cpu: "500m"
-                  readinessProbe:
-                    exec:
-                      command:
-                        - /bin/sh
-                        - -c
-                        - pg_isready -U postgres
-                    initialDelaySeconds: 10
-                    periodSeconds: 5
-                  livenessProbe:
-                    exec:
-                      command:
-                        - /bin/sh
-                        - -c
-                        - pg_isready -U postgres
-                    initialDelaySeconds: 30
-                    periodSeconds: 10
-                volumes:
-                - name: postgres-storage
-                  persistentVolumeClaim:
-                    claimName: postgres-pvc
+      - name: Cache Maven
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
 
-    - name: Criar Service para PostgreSQL
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: postgres-service
-            namespace: "{{ app_namespace }}"
-          spec:
-            selector:
-              app: postgres
-            ports:
-            - port: 5432
-              targetPort: 5432
-            type: ClusterIP
+      - name: Build e Test Backend
+        working-directory: API
+        run: mvn clean verify
 
-    - name: Aguardar PostgreSQL ficar pronto
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ app_namespace }}"
-        label_selectors:
-          - app=postgres
-        wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
-        wait_timeout: 600
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Verificar status do PostgreSQL
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ app_namespace }}"
-        label_selectors:
-          - app=postgres
-      register: postgres_pods
+      - name: Build e Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./API
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/estacionamento-backend:latest
 
-    - name: Debug PostgreSQL
-      debug:
-        msg: |
-          PostgreSQL Pods Status:
-          {% for pod in postgres_pods.resources %}
-          - Name: {{ pod.metadata.name }}
-          - Phase: {{ pod.status.phase }}
-          - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
-          {% endfor %}
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
 
-    - name: Deploy do Backend (Spring Boot)
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: backend-deployment
-            namespace: "{{ app_namespace }}"
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: backend
-            template:
-              metadata:
-                labels:
-                  app: backend
-              spec:
-                containers:
-                - name: backend
-                  image: "{{ docker_user }}/estacionamento-backend:latest"
-                  imagePullPolicy: Always
-                  env:
-                  - name: SPRING_DATASOURCE_URL
-                    value: "jdbc:postgresql://postgres-service:5432/estacionamento"
-                  - name: SPRING_DATASOURCE_USERNAME
-                    value: "postgres"
-                  - name: SPRING_DATASOURCE_PASSWORD
-                    value: "postgres"
-                  - name: JAVA_OPTS
-                    value: "-Xmx512m -Xms256m"
-                  ports:
-                  - containerPort: 8080
-                  resources:
-                    requests:
-                      memory: "512Mi"
-                      cpu: "250m"
-                    limits:
-                      memory: "1Gi"
-                      cpu: "500m"
-                  readinessProbe:
-                    httpGet:
-                      path: /actuator/health
-                      port: 8080
-                    initialDelaySeconds: 60
-                    periodSeconds: 10
-                    timeoutSeconds: 5
-                    failureThreshold: 3
-                  livenessProbe:
-                    httpGet:
-                      path: /actuator/health
-                      port: 8080
-                    initialDelaySeconds: 120
-                    periodSeconds: 30
-                    timeoutSeconds: 5
-                    failureThreshold: 3
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
 
-    - name: Criar Service para Backend
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: backend-service
-            namespace: "{{ app_namespace }}"
-          spec:
-            selector:
-              app: backend
-            ports:
-            - port: 8080
-              targetPort: 8080
-            type: ClusterIP
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
 
-    - name: Aguardar Backend ficar pronto (com timeout maior)
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ app_namespace }}"
-        label_selectors:
-          - app=backend
-        wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
-        wait_timeout: 900
-      register: backend_wait_result
-      ignore_errors: true
+      - name: Cache Node modules
+        uses: actions/cache@v4
+        with:
+          path: interface/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('interface/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
 
-    - name: Verificar status do Backend se timeout
-      when: backend_wait_result.failed
-      block:
-        - name: Obter logs do Backend
-          kubernetes.core.k8s_info:
-            api_version: v1
-            kind: Pod
-            namespace: "{{ app_namespace }}"
-            label_selectors:
-              - app=backend
-          register: backend_pods
+      - name: Instalar dependências Frontend
+        working-directory: interface
+        run: npm i --force
 
-        - name: Mostrar logs do Backend
-          shell: |
-            kubectl logs -n {{ app_namespace }} {{ backend_pods.resources[0].metadata.name }} --tail=50
-          register: backend_logs
-          when: backend_pods.resources | length > 0
+      - name: Executar testes Frontend
+        working-directory: interface
+        run: npm run test:unit
 
-        - name: Debug Backend
-          debug:
-            msg: |
-              Backend não ficou pronto em 15 minutos!
-              
-              Pods Status:
-              {% for pod in backend_pods.resources %}
-              - Name: {{ pod.metadata.name }}
-              - Phase: {{ pod.status.phase }}
-              - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
-              - Restart Count: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
-              {% endfor %}
-              
-              Logs:
-              {{ backend_logs.stdout if backend_logs is defined else 'Não foi possível obter logs' }}
+      - name: Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-        - name: Falhar se Backend não estiver pronto
-          fail:
-            msg: "Backend não ficou pronto após 15 minutos"
+      - name: Build e Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./interface
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/estacionamento-frontend:latest
 
-    - name: Criar ConfigMap para configuração do Nginx (Frontend)
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: nginx-config
-            namespace: "{{ app_namespace }}"
-          data:
-            default.conf: |
-              server {
-                  listen 80;
-                  server_name localhost;
-                  
-                  location / {
-                      root /usr/share/nginx/html;
-                      index index.html index.htm;
-                      try_files $uri $uri/ /index.html;
-                  }
-                  
-                  location /api/ {
-                      proxy_pass http://backend-service:8080/;
-                      proxy_set_header Host $host;
-                      proxy_set_header X-Real-IP $remote_addr;
-                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                      proxy_set_header X-Forwarded-Proto $scheme;
-                      proxy_connect_timeout 30s;
-                      proxy_send_timeout 30s;
-                      proxy_read_timeout 30s;
-                  }
-                  
-                  error_page 500 502 503 504 /50x.html;
-                  location = /50x.html {
-                      root /usr/share/nginx/html;
-                  }
-              }
+  check-infrastructure:
+    name: Verificar Infraestrutura Existente
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    outputs:
+      cluster_exists: ${{ steps.check.outputs.cluster_exists }}
+      cluster_name: ${{ steps.check.outputs.cluster_name }}
+      cluster_location: ${{ steps.check.outputs.cluster_location }}
 
-    - name: Deploy do Frontend (Vue.js com Nginx)
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: frontend-deployment
-            namespace: "{{ app_namespace }}"
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: frontend
-            template:
-              metadata:
-                labels:
-                  app: frontend
-              spec:
-                containers:
-                - name: frontend
-                  image: "{{ docker_user }}/estacionamento-frontend:latest"
-                  imagePullPolicy: Always
-                  ports:
-                  - containerPort: 80
-                  resources:
-                    requests:
-                      memory: "128Mi"
-                      cpu: "100m"
-                    limits:
-                      memory: "256Mi"
-                      cpu: "200m"
-                  volumeMounts:
-                  - name: nginx-config
-                    mountPath: /etc/nginx/conf.d
-                  readinessProbe:
-                    httpGet:
-                      path: /
-                      port: 80
-                    initialDelaySeconds: 10
-                    periodSeconds: 5
-                  livenessProbe:
-                    httpGet:
-                      path: /
-                      port: 80
-                    initialDelaySeconds: 30
-                    periodSeconds: 10
-                volumes:
-                - name: nginx-config
-                  configMap:
-                    name: nginx-config
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
 
-    - name: Criar Service para Frontend
-      kubernetes.core.k8s:
-        definition:
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: frontend-service
-            namespace: "{{ app_namespace }}"
-          spec:
-            selector:
-              app: frontend
-            ports:
-            - port: 80
-              targetPort: 80
-            type: LoadBalancer
+      - name: Autenticar no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
 
-    - name: Aguardar Frontend ficar pronto
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ app_namespace }}"
-        label_selectors:
-          - app=frontend
-        wait: true
-        wait_condition:
-          type: Ready
-          status: "True"
-        wait_timeout: 300
+      - name: Configurar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: celtic-shape-452222-c9
 
-    - name: Obter IP externo do LoadBalancer
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Service
-        name: frontend-service
-        namespace: "{{ app_namespace }}"
-      register: frontend_service
+      - name: Verificar se cluster existe
+        id: check
+        run: |
+          # Verificar se o cluster existe
+          if gcloud container clusters describe k8s-cluster-prod --location=southamerica-east1 --project=celtic-shape-452222-c9 >/dev/null 2>&1; then
+            echo "cluster_exists=true" >> $GITHUB_OUTPUT
+            echo "cluster_name=k8s-cluster-prod" >> $GITHUB_OUTPUT
+            echo "cluster_location=southamerica-east1" >> $GITHUB_OUTPUT
+            echo "✅ Cluster k8s-cluster-prod já existe"
+          else
+            echo "cluster_exists=false" >> $GITHUB_OUTPUT
+            echo "cluster_name=" >> $GITHUB_OUTPUT
+            echo "cluster_location=" >> $GITHUB_OUTPUT
+            echo "❌ Cluster k8s-cluster-prod não existe"
+          fi
 
-    - name: Exibir informações do deploy
-      debug:
-        msg: |
-          🎉 Deploy realizado com sucesso!
+  terraform-infra:
+    name: Provisionar Infraestrutura K8s
+    runs-on: ubuntu-latest
+    needs: check-infrastructure
+    if: needs.check-infrastructure.outputs.cluster_exists == 'false'
+    env:
+      GCP_USER: ${{ secrets.GCP_USER }}
+      SSH_KEY_PUB: ${{ secrets.SSH_KEY_PUB }}
+    outputs:
+      cluster_name: ${{ steps.terraform.outputs.cluster_name }}
+      cluster_location: ${{ steps.terraform.outputs.cluster_location }}
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.4
+          terraform_wrapper: false
+
+      - name: Autenticar no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Executar Terraform
+        id: terraform
+        working-directory: terraform/prod
+        run: |
+          terraform init -input=false
+          terraform plan -input=false \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB"
+          terraform apply -auto-approve -input=false \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB"
           
-          Namespace: {{ app_namespace }}
-          
-          Serviços criados:
-          - PostgreSQL: postgres-service:5432
-          - Backend: backend-service:8080  
-          - Frontend: frontend-service:80
-          
-          {% if frontend_service.resources[0].status.loadBalancer.ingress is defined %}
-          🌐 IP Externo: {{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
-          🚀 Acesse: http://{{ frontend_service.resources[0].status.loadBalancer.ingress[0].ip }}
-          {% else %}
-          ⏳ LoadBalancer sendo provisionado...
-          Execute: kubectl get service frontend-service -n {{ app_namespace }}
-          {% endif %}
+          echo "cluster_name=$(terraform output -raw cluster_name)" >> $GITHUB_OUTPUT
+          echo "cluster_location=$(terraform output -raw cluster_location)" >> $GITHUB_OUTPUT
 
-    - name: Verificar status final dos pods
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Pod
-        namespace: "{{ app_namespace }}"
-      register: final_pod_status
+  deploy-k8s:
+    name: Deploy Aplicação no Kubernetes
+    runs-on: ubuntu-latest
+    needs: [check-infrastructure, terraform-infra]
+    if: always() && (needs.check-infrastructure.result == 'success')
 
-    - name: Exibir status final
-      debug:
-        msg: |
-          📊 Status Final dos Pods:
-          {% for pod in final_pod_status.resources %}
-          - {{ pod.metadata.name }}: {{ pod.status.phase }}
-            Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
-            Restarts: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
-          {% endfor %}
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Configurar Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: celtic-shape-452222-c9
+
+      - name: Instalar gke-gcloud-auth-plugin
+        run: |
+          gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Definir variáveis do cluster
+        id: cluster-vars
+        run: |
+          if [ "${{ needs.check-infrastructure.outputs.cluster_exists }}" == "true" ]; then
+            echo "CLUSTER_NAME=${{ needs.check-infrastructure.outputs.cluster_name }}" >> $GITHUB_ENV
+            echo "CLUSTER_LOCATION=${{ needs.check-infrastructure.outputs.cluster_location }}" >> $GITHUB_ENV
+          else
+            echo "CLUSTER_NAME=${{ needs.terraform-infra.outputs.cluster_name }}" >> $GITHUB_ENV
+            echo "CLUSTER_LOCATION=${{ needs.terraform-infra.outputs.cluster_location }}" >> $GITHUB_ENV
+          fi
+
+      - name: Configurar kubectl
+        run: |
+          gcloud container clusters get-credentials $CLUSTER_NAME \
+            --location $CLUSTER_LOCATION \
+            --project celtic-shape-452222-c9
+
+      - name: Instalar Ansible e dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip3 install ansible kubernetes google-auth google-cloud-container
+
+      - name: Instalar Ansible Kubernetes Collection
+        working-directory: ansible
+        run: ansible-galaxy collection install kubernetes.core
+
+      - name: Executar Ansible Deploy
+        working-directory: ansible
+        run: |
+          ansible-playbook -i k8s-inventory.ini deploy-k8s.yml \
+            -e cluster_name=$CLUSTER_NAME \
+            -e cluster_location=$CLUSTER_LOCATION \
+            -e docker_user=${{ secrets.DOCKER_USERNAME }}
+
+      - name: Verificar status do deploy
+        run: |
+          echo "🔍 Verificando status dos pods..."
+          kubectl get pods -n estacionamento
+          
+          echo "🔍 Verificando serviços..."
+          kubectl get services -n estacionamento
+          
+          echo "⏳ Aguardando pods ficarem prontos..."
+          kubectl wait --for=condition=ready pod -l app=frontend -n estacionamento --timeout=300s || true
+          kubectl wait --for=condition=ready pod -l app=backend -n estacionamento --timeout=300s || true
+          kubectl wait --for=condition=ready pod -l app=postgres -n estacionamento --timeout=300s || true
+          
+          echo "🌐 Verificando LoadBalancer..."
+          for i in {1..30}; do
+            EXTERNAL_IP=$(kubectl get service frontend-service -n estacionamento -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+            if [ ! -z "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "null" ]; then
+              echo "🚀 Aplicação disponível em: http://$EXTERNAL_IP"
+              break
+            else
+              echo "⏳ Aguardando LoadBalancer ser provisionado... (tentativa $i/30)"
+              sleep 10
+            fi
+          done
+          
+          if [ -z "$EXTERNAL_IP" ] || [ "$EXTERNAL_IP" == "null" ]; then
+            echo "⚠️  LoadBalancer ainda sendo provisionado."
+            echo "Execute o comando para verificar: kubectl get service frontend-service -n estacionamento"
+          fi
+
+      - name: Status final do deploy
+        run: |
+          echo "📊 Status final dos recursos:"
+          echo "================================"
+          kubectl get all -n estacionamento
+          echo "================================"
+          echo "✅ Deploy concluído!"
