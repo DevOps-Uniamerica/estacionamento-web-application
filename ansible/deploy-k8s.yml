@@ -362,7 +362,7 @@
                     - sh
                     - -c
                     - |
-                      until pg_isready -h postgres-service -p 5432 -U {{ postgres_user }}; do
+                      until pg_isready -h postgres-service.{{ app_namespace }}.svc.cluster.local -p 5432 -U {{ postgres_user }}; do
                         echo "Aguardando PostgreSQL..."
                         sleep 2
                       done
@@ -373,7 +373,7 @@
                   imagePullPolicy: Always
                   env:
                   - name: SPRING_DATASOURCE_URL
-                    value: "jdbc:postgresql://postgres-service:5432/{{ postgres_db }}"
+                    value: "jdbc:postgresql://postgres-service.{{ app_namespace }}.svc.cluster.local:5432/{{ postgres_db }}"
                   - name: SPRING_DATASOURCE_USERNAME
                     value: "{{ postgres_user }}"
                   - name: SPRING_DATASOURCE_PASSWORD
@@ -494,7 +494,7 @@
                   }
                   
                   location /api/ {
-                      proxy_pass http://backend-service:8080;
+                      proxy_pass http://backend-service.{{ app_namespace }}.svc.cluster.local:8080;
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -639,8 +639,8 @@
           {% endfor %}
           
           🌐 Serviços:
-          - PostgreSQL: postgres-service:5432 ({{ postgres_user }}/{{ postgres_password }})
-          - Backend: backend-service:8080  
+          - PostgreSQL: postgres-service.{{ app_namespace }}.svc.cluster.local:5432
+          - Backend: backend-service.{{ app_namespace }}.svc.cluster.local:8080  
           - Frontend: frontend-service:80
           
           {% if frontend_service_final.resources[0].status.loadBalancer.ingress is defined %}
