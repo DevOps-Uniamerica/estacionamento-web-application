@@ -45,6 +45,23 @@
           - {{ node.metadata.name }}: {{ node.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first }}
           {% endfor %}
 
+    # LIMPEZA INICIAL - Remover deployments antigos problemáticos
+    - name: Limpar deployments antigos do backend (se houver)
+      kubernetes.core.k8s:
+        api_version: apps/v1
+        kind: Deployment
+        name: backend-deployment
+        namespace: "{{ app_namespace }}"
+        state: absent
+        wait: true
+        wait_timeout: 120
+      ignore_errors: true
+
+    - name: Aguardar remoção completa dos pods antigos
+      shell: |
+        kubectl wait --for=delete pods -l app=backend -n {{ app_namespace }} --timeout=60s
+      ignore_errors: true
+
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
         name: "{{ app_namespace }}"
@@ -80,21 +97,7 @@
             resources:
               requests:
                 storage: 5Gi
-            # Adicionar storageClassName para GKE
             storageClassName: standard-rwo
-
-    - name: Verificar se PVC foi criado
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: PersistentVolumeClaim
-        name: postgres-pvc
-        namespace: "{{ app_namespace }}"
-      register: pvc_info
-
-    - name: Debug PVC
-      debug:
-        msg: |
-          PVC Status: {{ pvc_info.resources[0].status.phase if pvc_info.resources else 'Not found' }}
 
     - name: Deploy do PostgreSQL
       kubernetes.core.k8s:
@@ -114,10 +117,6 @@
                 labels:
                   app: postgres
               spec:
-                # Adicionar tolerância para possíveis problemas de scheduling
-                tolerations:
-                - operator: "Exists"
-                  effect: "NoSchedule"
                 containers:
                 - name: postgres
                   image: postgres:15-alpine
@@ -192,126 +191,18 @@
               targetPort: 5432
             type: ClusterIP
 
-    - name: Aguardar deployment do PostgreSQL ser criado
+    - name: Aguardar PostgreSQL ficar pronto
       kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: postgres-deployment
+        api_version: v1
+        kind: Pod
         namespace: "{{ app_namespace }}"
+        label_selectors:
+          - app=postgres
         wait: true
         wait_condition:
-          type: Available
+          type: Ready
           status: "True"
-        wait_timeout: 120
-      register: postgres_deployment
-
-    - name: Verificar status do deployment PostgreSQL
-      debug:
-        msg: |
-          PostgreSQL Deployment Status:
-          Available Replicas: {{ postgres_deployment.resources[0].status.availableReplicas | default(0) }}
-          Ready Replicas: {{ postgres_deployment.resources[0].status.readyReplicas | default(0) }}
-          Replicas: {{ postgres_deployment.resources[0].status.replicas | default(0) }}
-
-    - name: Aguardar PostgreSQL pod ficar pronto (com diagnóstico)
-      block:
-        - name: Aguardar PostgreSQL ficar pronto
-          kubernetes.core.k8s_info:
-            api_version: v1
-            kind: Pod
-            namespace: "{{ app_namespace }}"
-            label_selectors:
-              - app=postgres
-            wait: true
-            wait_condition:
-              type: Ready
-              status: "True"
-            wait_timeout: 300
-          register: postgres_wait_result
-
-      rescue:
-        - name: Diagnóstico PostgreSQL em caso de falha
-          kubernetes.core.k8s_info:
-            api_version: v1
-            kind: Pod
-            namespace: "{{ app_namespace }}"
-            label_selectors:
-              - app=postgres
-          register: postgres_pods_debug
-
-        - name: Obter logs do PostgreSQL
-          shell: |
-            for pod in $(kubectl get pods -n {{ app_namespace }} -l app=postgres -o jsonpath='{.items[*].metadata.name}'); do
-              echo "=== Logs do pod $pod ==="
-              kubectl logs -n {{ app_namespace }} $pod --tail=50 || echo "Não foi possível obter logs do pod $pod"
-              echo "=== Describe do pod $pod ==="
-              kubectl describe pod -n {{ app_namespace }} $pod
-            done
-          register: postgres_debug_logs
-
-        - name: Debug PostgreSQL detalhado
-          debug:
-            msg: |
-              ❌ PostgreSQL não ficou pronto em 5 minutos!
-              
-              Pods encontrados: {{ postgres_pods_debug.resources | length }}
-              {% for pod in postgres_pods_debug.resources %}
-              
-              Pod: {{ pod.metadata.name }}
-              - Phase: {{ pod.status.phase }}
-              - Node: {{ pod.spec.nodeName | default('N/A') }}
-              - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
-              - Restart Count: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
-              - Image: {{ pod.status.containerStatuses[0].image if pod.status.containerStatuses else 'N/A' }}
-              {% if pod.status.containerStatuses and pod.status.containerStatuses[0].state %}
-              - State: {{ pod.status.containerStatuses[0].state.keys() | list | first }}
-              {% endif %}
-              {% if pod.status.conditions %}
-              - Conditions:
-              {% for condition in pod.status.conditions %}
-                - {{ condition.type }}: {{ condition.status }} ({{ condition.reason | default('N/A') }})
-              {% endfor %}
-              {% endif %}
-              {% endfor %}
-              
-              Debug completo:
-              {{ postgres_debug_logs.stdout }}
-
-        - name: Verificar eventos do namespace
-          shell: kubectl get events -n {{ app_namespace }} --sort-by='.lastTimestamp'
-          register: namespace_events
-
-        - name: Mostrar eventos do namespace
-          debug:
-            msg: |
-              Eventos do namespace {{ app_namespace }}:
-              {{ namespace_events.stdout }}
-
-        - name: Verificar recursos do cluster
-          shell: |
-            echo "=== Nodes ==="
-            kubectl get nodes -o wide
-            echo "=== PVC ==="
-            kubectl get pvc -n {{ app_namespace }}
-            echo "=== Storage Classes ==="
-            kubectl get storageclass
-          register: cluster_resources
-
-        - name: Debug recursos do cluster
-          debug:
-            msg: |
-              Recursos do cluster:
-              {{ cluster_resources.stdout }}
-
-        - name: Falhar com informações detalhadas
-          fail:
-            msg: |
-              PostgreSQL não ficou pronto. Verifique os logs acima para diagnóstico.
-              Possíveis causas:
-              1. Problemas com PVC/storage
-              2. Recursos insuficientes no cluster
-              3. Problemas de rede
-              4. Configuração incorreta do PostgreSQL
+        wait_timeout: 300
 
     - name: Verificar conectividade com PostgreSQL
       shell: |
@@ -319,21 +210,16 @@
           --env="PGPASSWORD={{ postgres_password }}" -- \
           psql -h postgres-service -U {{ postgres_user }} -d {{ postgres_db }} -c "SELECT version();"
       register: postgres_connectivity
-      ignore_errors: true
 
     - name: Debug conectividade PostgreSQL
       debug:
         msg: |
           Teste de conectividade PostgreSQL:
-          {% if postgres_connectivity.rc == 0 %}
           ✅ Conectividade OK
           Output: {{ postgres_connectivity.stdout }}
-          {% else %}
-          ❌ Falha na conectividade
-          Error: {{ postgres_connectivity.stderr }}
-          {% endif %}
 
-    - name: Deploy do Backend (Spring Boot)
+    # CONFIGURAÇÃO CORRIGIDA DO BACKEND
+    - name: Deploy do Backend (Spring Boot) - VERSÃO CORRIGIDA
       kubernetes.core.k8s:
         definition:
           apiVersion: apps/v1
@@ -351,7 +237,7 @@
                 labels:
                   app: backend
               spec:
-                # Adicionar init container para aguardar PostgreSQL
+                # Init container para aguardar PostgreSQL
                 initContainers:
                 - name: wait-for-postgres
                   image: postgres:15-alpine
@@ -364,9 +250,12 @@
                     - |
                       until pg_isready -h postgres-service.{{ app_namespace }}.svc.cluster.local -p 5432 -U {{ postgres_user }}; do
                         echo "Aguardando PostgreSQL..."
-                        sleep 2
+                        sleep 5
                       done
                       echo "PostgreSQL está pronto!"
+                      # Testar conexão completa
+                      psql -h postgres-service.{{ app_namespace }}.svc.cluster.local -p 5432 -U {{ postgres_user }} -d {{ postgres_db }} -c "SELECT 1;" || exit 1
+                      echo "Conexão com PostgreSQL validada!"
                 containers:
                 - name: backend
                   image: "{{ docker_user }}/estacionamento-backend:latest"
@@ -378,35 +267,75 @@
                     value: "{{ postgres_user }}"
                   - name: SPRING_DATASOURCE_PASSWORD
                     value: "{{ postgres_password }}"
-                  - name: JAVA_OPTS
-                    value: "-Xmx512m -Xms256m"
                   - name: SPRING_JPA_HIBERNATE_DDL_AUTO
                     value: "update"
+                  - name: SPRING_JPA_DATABASE_PLATFORM
+                    value: "org.hibernate.dialect.PostgreSQLDialect"
+                  # Configurações específicas do Actuator para Kubernetes
+                  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+                    value: "health,info,metrics"
+                  - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+                    value: "always"
+                  - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+                    value: "true"
+                  - name: MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED
+                    value: "true"
+                  - name: MANAGEMENT_HEALTH_READINESSSTATE_ENABLED
+                    value: "true"
+                  # Configurações de JVM otimizadas
+                  - name: JAVA_OPTS
+                    value: "-Xmx768m -Xms512m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Djava.security.egd=file:/dev/urandom"
+                  # Configurações de timeout do Spring Boot
+                  - name: SERVER_TOMCAT_CONNECTION_TIMEOUT
+                    value: "20000"
+                  - name: SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT
+                    value: "30000"
+                  - name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE
+                    value: "10"
+                  - name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE
+                    value: "5"
                   ports:
                   - containerPort: 8080
+                    name: http
                   resources:
                     requests:
-                      memory: "512Mi"
-                      cpu: "250m"
+                      memory: "768Mi"
+                      cpu: "500m"
                     limits:
                       memory: "1Gi"
-                      cpu: "500m"
+                      cpu: "1000m"
+                  # Health checks configurados corretamente
                   readinessProbe:
                     httpGet:
-                      path: /actuator/health
+                      path: /actuator/health/readiness
                       port: 8080
-                    initialDelaySeconds: 60
+                      scheme: HTTP
+                    initialDelaySeconds: 120
                     periodSeconds: 10
-                    timeoutSeconds: 10
-                    failureThreshold: 6
+                    timeoutSeconds: 5
+                    successThreshold: 1
+                    failureThreshold: 3
                   livenessProbe:
+                    httpGet:
+                      path: /actuator/health/liveness
+                      port: 8080
+                      scheme: HTTP
+                    initialDelaySeconds: 180
+                    periodSeconds: 30
+                    timeoutSeconds: 5
+                    successThreshold: 1
+                    failureThreshold: 3
+                  # Startup probe para dar mais tempo na inicialização
+                  startupProbe:
                     httpGet:
                       path: /actuator/health
                       port: 8080
-                    initialDelaySeconds: 120
-                    periodSeconds: 30
-                    timeoutSeconds: 10
-                    failureThreshold: 6
+                      scheme: HTTP
+                    initialDelaySeconds: 60
+                    periodSeconds: 10
+                    timeoutSeconds: 5
+                    successThreshold: 1
+                    failureThreshold: 30  # 5 minutos no total
 
     - name: Criar Service para Backend
       kubernetes.core.k8s:
@@ -422,11 +351,13 @@
             ports:
             - port: 8080
               targetPort: 8080
+              name: http
             type: ClusterIP
 
-    - name: Aguardar Backend ficar pronto (com diagnóstico)
+    # AGUARDAR BACKEND COM DIAGNÓSTICO MELHORADO
+    - name: Aguardar Backend ficar pronto (com diagnóstico melhorado)
       block:
-        - name: Aguardar Backend ficar pronto
+        - name: Aguardar Backend startup probe passar
           kubernetes.core.k8s_info:
             api_version: v1
             kind: Pod
@@ -437,41 +368,57 @@
             wait_condition:
               type: Ready
               status: "True"
-            wait_timeout: 600
+            wait_timeout: 900  # 15 minutos
           register: backend_wait_result
 
-      rescue:
-        - name: Diagnóstico Backend em caso de falha
-          kubernetes.core.k8s_info:
-            api_version: v1
-            kind: Pod
-            namespace: "{{ app_namespace }}"
-            label_selectors:
-              - app=backend
-          register: backend_pods_debug
-
-        - name: Obter logs do Backend
+        - name: Testar endpoint do backend diretamente
           shell: |
-            for pod in $(kubectl get pods -n {{ app_namespace }} -l app=backend -o jsonpath='{.items[*].metadata.name}'); do
-              echo "=== Logs do pod $pod ==="
-              kubectl logs -n {{ app_namespace }} $pod --tail=100 || echo "Não foi possível obter logs do pod $pod"
-              if kubectl get pod -n {{ app_namespace }} $pod | grep -q "Init:"; then
-                echo "=== Logs do init container ==="
-                kubectl logs -n {{ app_namespace }} $pod -c wait-for-postgres --tail=50 || echo "Não foi possível obter logs do init container"
-              fi
-            done
-          register: backend_debug_logs
+            POD_NAME=$(kubectl get pods -n {{ app_namespace }} -l app=backend -o jsonpath='{.items[0].metadata.name}')
+            kubectl exec -n {{ app_namespace }} $POD_NAME -- curl -f http://localhost:8080/actuator/health
+          register: backend_health_test
 
-        - name: Debug Backend detalhado
+        - name: Debug sucesso do backend
           debug:
             msg: |
-              ❌ Backend não ficou pronto em 10 minutos!
-              
-              {{ backend_debug_logs.stdout }}
+              ✅ Backend está funcionando!
+              Health check: {{ backend_health_test.stdout }}
 
-        - name: Continuar sem falhar (para não bloquear o frontend)
+      rescue:
+        - name: Diagnóstico completo do Backend
+          shell: |
+            echo "=== PODS BACKEND ==="
+            kubectl get pods -n {{ app_namespace }} -l app=backend -o wide
+            
+            echo "=== LOGS DOS PODS ==="
+            for pod in $(kubectl get pods -n {{ app_namespace }} -l app=backend -o jsonpath='{.items[*].metadata.name}'); do
+              echo "--- Logs do pod $pod ---"
+              kubectl logs -n {{ app_namespace }} $pod --tail=100
+              echo "--- Logs do init container ---"
+              kubectl logs -n {{ app_namespace }} $pod -c wait-for-postgres --tail=50 || echo "Sem init container logs"
+              echo "--- Describe do pod ---"
+              kubectl describe pod -n {{ app_namespace }} $pod
+            done
+            
+            echo "=== EVENTOS ==="
+            kubectl get events -n {{ app_namespace }} --sort-by='.lastTimestamp' | grep backend
+            
+            echo "=== TESTE DE REDE ==="
+            kubectl run network-test --image=curlimages/curl --rm -i --restart=Never -n {{ app_namespace }} -- \
+              curl -v http://backend-service:8080/actuator/health || echo "Falha no teste de rede"
+          register: backend_full_diagnosis
+
+        - name: Mostrar diagnóstico completo
           debug:
-            msg: "Backend não ficou pronto, mas continuando com o deploy do frontend..."
+            msg: |
+              ❌ Backend falhou após 15 minutos!
+              
+              {{ backend_full_diagnosis.stdout }}
+
+        - name: Tentar estratégia de recuperação
+          debug:
+            msg: |
+              🔄 Continuando com deploy do frontend mesmo com backend com problemas...
+              Motivo: Frontend pode funcionar parcialmente e ajudar no diagnóstico.
 
     - name: Criar ConfigMap para configuração do Nginx (Frontend)
       kubernetes.core.k8s:
@@ -487,6 +434,10 @@
                   listen 80;
                   server_name localhost;
                   
+                  # Configurações de log para debug
+                  access_log /var/log/nginx/access.log;
+                  error_log /var/log/nginx/error.log debug;
+                  
                   location / {
                       root /usr/share/nginx/html;
                       index index.html index.htm;
@@ -494,21 +445,41 @@
                   }
                   
                   location /api/ {
-                      proxy_pass http://backend-service.{{ app_namespace }}.svc.cluster.local:8080;
+                      # Configurações de timeout mais generosas
+                      proxy_connect_timeout 60s;
+                      proxy_send_timeout 60s;
+                      proxy_read_timeout 60s;
+                      
+                      # Headers necessários
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                       proxy_set_header X-Forwarded-Proto $scheme;
-                      proxy_connect_timeout 30s;
-                      proxy_send_timeout 30s;
-                      proxy_read_timeout 30s;
-                      # Adicionar tratamento de timeout
+                      
+                      # Endereço do backend com fallback
+                      proxy_pass http://backend-service.{{ app_namespace }}.svc.cluster.local:8080;
+                      
+                      # Melhor handling de erros
                       proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+                      proxy_next_upstream_timeout 60s;
+                      proxy_next_upstream_tries 3;
+                      
+                      # Headers de erro customizados
+                      proxy_intercept_errors on;
+                      error_page 502 503 504 = @backend_error;
                   }
                   
-                  error_page 500 502 503 504 /50x.html;
-                  location = /50x.html {
-                      root /usr/share/nginx/html;
+                  # Página de erro customizada para problemas do backend
+                  location @backend_error {
+                      return 503 '{"error": "Backend temporariamente indisponível", "message": "Tente novamente em alguns instantes"}';
+                      add_header Content-Type application/json;
+                  }
+                  
+                  # Health check para o frontend
+                  location /nginx-health {
+                      access_log off;
+                      return 200 "OK\n";
+                      add_header Content-Type text/plain;
                   }
               }
 
@@ -548,19 +519,19 @@
                     mountPath: /etc/nginx/conf.d
                   readinessProbe:
                     httpGet:
-                      path: /
+                      path: /nginx-health
                       port: 80
                     initialDelaySeconds: 10
                     periodSeconds: 5
-                    timeoutSeconds: 5
+                    timeoutSeconds: 3
                     failureThreshold: 3
                   livenessProbe:
                     httpGet:
-                      path: /
+                      path: /nginx-health
                       port: 80
                     initialDelaySeconds: 30
                     periodSeconds: 10
-                    timeoutSeconds: 5
+                    timeoutSeconds: 3
                     failureThreshold: 3
                 volumes:
                 - name: nginx-config
@@ -624,6 +595,30 @@
         namespace: "{{ app_namespace }}"
       register: final_pod_status
 
+    - name: Teste final de conectividade
+      shell: |
+        echo "=== TESTE FINAL DE CONECTIVIDADE ==="
+        
+        # Teste do PostgreSQL
+        echo "1. Testando PostgreSQL..."
+        kubectl run postgres-final-test --image=postgres:15-alpine --rm -i --restart=Never -n {{ app_namespace }} \
+          --env="PGPASSWORD={{ postgres_password }}" -- \
+          psql -h postgres-service -U {{ postgres_user }} -d {{ postgres_db }} -c "SELECT 'PostgreSQL OK' as status;" || echo "PostgreSQL: FAIL"
+        
+        # Teste do Backend (se estiver rodando)
+        echo "2. Testando Backend..."
+        kubectl run backend-final-test --image=curlimages/curl --rm -i --restart=Never -n {{ app_namespace }} -- \
+          curl -f -m 10 http://backend-service:8080/actuator/health || echo "Backend: FAIL"
+        
+        # Teste do Frontend
+        echo "3. Testando Frontend..."
+        kubectl run frontend-final-test --image=curlimages/curl --rm -i --restart=Never -n {{ app_namespace }} -- \
+          curl -f -m 10 http://frontend-service/nginx-health || echo "Frontend: FAIL"
+        
+        echo "=== TESTE COMPLETO ==="
+      register: final_connectivity_test
+      ignore_errors: true
+
     - name: Exibir resultado final do deploy
       debug:
         msg: |
@@ -651,7 +646,14 @@
           Execute: kubectl get service frontend-service -n {{ app_namespace }}
           {% endif %}
           
-          📋 Para monitorar:
+          🔧 Testes de Conectividade:
+          {{ final_connectivity_test.stdout }}
+          
+          📋 Para monitorar e diagnosticar:
           kubectl get pods -n {{ app_namespace }} -w
-          kubectl get services -n {{ app_namespace }}
           kubectl logs -f deployment/backend-deployment -n {{ app_namespace }}
+          kubectl logs -f deployment/frontend-deployment -n {{ app_namespace }}
+          
+          🩺 Para debug específico do backend:
+          kubectl exec -it deployment/backend-deployment -n {{ app_namespace }} -- curl localhost:8080/actuator/health
+          kubectl describe pod -l app=backend -n {{ app_namespace }}
