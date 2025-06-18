@@ -391,22 +391,7 @@
                     limits:
                       memory: "1Gi"
                       cpu: "500m"
-                  readinessProbe:
-                    httpGet:
-                      path: /actuator/health
-                      port: 8080
-                    initialDelaySeconds: 60
-                    periodSeconds: 10
-                    timeoutSeconds: 10
-                    failureThreshold: 6
-                  livenessProbe:
-                    httpGet:
-                      path: /actuator/health
-                      port: 8080
-                    initialDelaySeconds: 120
-                    periodSeconds: 30
-                    timeoutSeconds: 10
-                    failureThreshold: 6
+                  # HEALTH CHECKS REMOVIDOS - apenas aguarda o container iniciar
 
     - name: Criar Service para Backend
       kubernetes.core.k8s:
@@ -424,9 +409,9 @@
               targetPort: 8080
             type: ClusterIP
 
-    - name: Aguardar Backend ficar pronto (com diagnóstico)
+    - name: Aguardar Backend ficar pronto (sem health checks)
       block:
-        - name: Aguardar Backend ficar pronto
+        - name: Aguardar Backend container iniciar
           kubernetes.core.k8s_info:
             api_version: v1
             kind: Pod
@@ -435,10 +420,14 @@
               - app=backend
             wait: true
             wait_condition:
-              type: Ready
+              type: ContainersReady
               status: "True"
-            wait_timeout: 600
+            wait_timeout: 300
           register: backend_wait_result
+
+        - name: Aguardar alguns segundos para estabilizar
+          pause:
+            seconds: 30
 
       rescue:
         - name: Diagnóstico Backend em caso de falha
@@ -465,7 +454,7 @@
         - name: Debug Backend detalhado
           debug:
             msg: |
-              ❌ Backend não ficou pronto em 10 minutos!
+              ❌ Backend não ficou pronto em 5 minutos!
               
               {{ backend_debug_logs.stdout }}
 
