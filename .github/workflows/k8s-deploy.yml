@@ -107,6 +107,10 @@ jobs:
     name: Provisionar Infraestrutura K8s
     runs-on: ubuntu-latest
     needs: [build-backend, build-frontend]
+    # Adicionando as variáveis de ambiente que estão faltando
+    env:
+      GCP_USER: ${{ secrets.GCP_USER }}
+      SSH_KEY_PUB: ${{ secrets.SSH_KEY_PUB }}
     outputs:
       cluster_name: ${{ steps.terraform.outputs.cluster_name }}
       cluster_location: ${{ steps.terraform.outputs.cluster_location }}
@@ -131,8 +135,12 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/credentials.json
         run: |
           terraform init -input=false
-          terraform plan -input=false
-          terraform apply -auto-approve -input=false
+          terraform plan -input=false \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB"
+          terraform apply -auto-approve -input=false \
+            -var="gcp_user=$GCP_USER" \
+            -var="ssh_key_pub=$SSH_KEY_PUB"
           
           echo "cluster_name=$(terraform output -raw cluster_name)" >> $GITHUB_OUTPUT
           echo "cluster_location=$(terraform output -raw cluster_location)" >> $GITHUB_OUTPUT
