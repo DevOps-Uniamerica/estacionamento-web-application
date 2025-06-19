@@ -30,8 +30,7 @@ Este repositório contém a aplicação de gerenciamento de estacionamento, incl
 
 ## Visão Geral
 
-A aplicação "Estacionamento Web" permite gerenciar vagas, movimentações de entrada/saída de veículos, cadastro de condutores, marcas e modelos.
-Este projeto está preparado para deployment em clusters Kubernetes separados para ambientes **Stage** e **Produção**, com pipelines de CI/CD via GitHub Actions.
+A aplicação "Estacionamento Web" permite gerenciar vagas, movimentações de entrada/saída de veículos, cadastro de condutores, marcas e modelos. Este projeto está preparado para deployment em clusters Kubernetes separados para ambientes **Stage** e **Produção**, com pipelines de CI/CD via GitHub Actions.
 
 ## Pré-requisitos
 
@@ -71,18 +70,18 @@ flowchart LR
     M2[Prometheus + Grafana]
   end
 
-  GH[GitHub Actions]
+  GH["GitHub Actions"]
   REPO["Repositório de Imagens (ECR/GCR/DockerHub)"]
 
-  GH -->|1. Terraform Init & Apply| A1
-  GH -->|1. Terraform Init & Apply| A2
-  GH -->|2. Build Back & Front| REPO
-  REPO -->|3. Deploy Back| A1
-  REPO -->|3. Deploy Back| A2
-  REPO -->|3. Deploy Front| A1
-  REPO -->|3. Deploy Front| A2
-  A1 --> M1
-  A2 --> M2
+  GH -->|"Terraform Init & Apply"| A1
+  GH -->|"Terraform Init & Apply"| A2
+  GH -->|"Build & Push"| REPO
+  REPO -->|"Deploy Backend"| A1
+  REPO -->|"Deploy Backend"| A2
+  REPO -->|"Deploy Frontend"| A1
+  REPO -->|"Deploy Frontend"| A2
+  A1 -->|"Metrics"| M1
+  A2 -->|"Metrics"| M2
 ```
 
 ## Como Executar Localmente
@@ -144,8 +143,7 @@ Arquivo: `.github/workflows/ci-stage.yml`
 
 ### Pipeline Produção
 
-Arquivo: `.github/workflows/ci-prod.yml`
-Mesma sequência do Stage, apontando para as credenciais de produção e executando testes de regressão (`scripts/regression-test.sh`).
+Arquivo: `.github/workflows/ci-prod.yml` Mesma sequência do Stage, apontando para as credenciais de produção e executando testes de regressão (`scripts/regression-test.sh`).
 
 ## Testes e Validação
 
@@ -160,7 +158,6 @@ Mesma sequência do Stage, apontando para as credenciais de produção e executa
 
 ## Observações Adicionais
 
-* Estimativa de custo por cluster: \~USD 20/mês (varia conforme uso)
 * Políticas de retenção de logs e métricas configuradas no Grafana (7 dias)
 * Helm Charts versionados em `kubernetes/helm`
 
