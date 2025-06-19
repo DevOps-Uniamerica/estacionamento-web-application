@@ -21,12 +21,10 @@ Este repositório contém a aplicação de gerenciamento de estacionamento, incl
 
   * [Stage](#pipeline-stage)
   * [Produção](#pipeline-produção)
-* [Monitoramento](#monitoramento)
 * [Testes e Validação](#testes-e-validação)
 * [Rollback e Limpeza](#rollback-e-limpeza)
 * [Observações Adicionais](#observações-adicionais)
 * [Segurança e Boas Práticas](#segurança-e-boas-práticas)
-* [Links Úteis](#links-úteis)
 
 ---
 
