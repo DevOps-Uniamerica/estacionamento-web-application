@@ -53,13 +53,11 @@ Este projeto está preparado para deployment em clusters Kubernetes separados pa
 ├── kubernetes/          # Manifests e Helm charts
 ├── .github/workflows/   # Pipelines CI/CD
 ├── docker/              # Dockerfiles
-├── scripts/             # Scripts auxiliar (smoke tests, validações)
+├── scripts/             # Scripts auxiliares (smoke tests, validações)
 └── README.md            # Este arquivo
 ```
 
 ## Arquitetura
-
-O diagrama abaixo ilustra os componentes principais e o fluxo de deployment:
 
 ```mermaid
 flowchart LR
@@ -74,7 +72,7 @@ flowchart LR
   end
 
   GH[GitHub Actions]
-  REPO[Repositório de Imagens (ECR/GCR/DockerHub)]
+  REPO["Repositório de Imagens (ECR/GCR/DockerHub)"]
 
   GH -->|1. Terraform Init & Apply| A1
   GH -->|1. Terraform Init & Apply| A2
@@ -95,15 +93,15 @@ flowchart LR
    git clone git@github.com:seu-usuario/estacionamento-web-application.git
    cd estacionamento-web-application
    ```
-2. Configurar variáveis de ambiente (ver abaixo)
-3. Backend:
+2. Configurar variáveis de ambiente (veja seção abaixo)
+3. Subir backend:
 
    ```bash
    cd API
    mvn clean install
    mvn spring-boot:run
    ```
-4. Frontend:
+4. Subir frontend:
 
    ```bash
    cd interface
@@ -149,13 +147,6 @@ Arquivo: `.github/workflows/ci-stage.yml`
 Arquivo: `.github/workflows/ci-prod.yml`
 Mesma sequência do Stage, apontando para as credenciais de produção e executando testes de regressão (`scripts/regression-test.sh`).
 
-### Dashboards
-
-* Os dashboards padrão estão em `kubernetes/monitoring/dashboards/`
-
-  * **CPU & Memória**: para consumo de recursos dos nodes e pods
-  * **Status dos Pods**: health e disponibilidade dos deployments
-
 ## Testes e Validação
 
 * **Smoke Tests:** verifica endpoints críticos após cada deploy.
@@ -168,6 +159,8 @@ Mesma sequência do Stage, apontando para as credenciais de produção e executa
 * **Limpeza de Infraestrutura:** execute `terraform destroy` nos workspaces `stage` e `prod`.
 
 ## Observações Adicionais
+
+* Estimativa de custo por cluster: \~USD 20/mês (varia conforme uso)
 * Políticas de retenção de logs e métricas configuradas no Grafana (7 dias)
 * Helm Charts versionados em `kubernetes/helm`
 
@@ -176,3 +169,7 @@ Mesma sequência do Stage, apontando para as credenciais de produção e executa
 * Segredos gerenciados via HashiCorp Vault ou AWS Secrets Manager
 * Network Policies no Kubernetes para isolar namespaces
 * Escalabilidade automática: HPA configurado nos Deployments
+
+---
+
+*Última atualização: 19 de junho de 2025*
