@@ -1,0 +1,71 @@
+- hosts: monitoring
+  become: yes
+  vars:
+    monitoring_dir: /opt/monitoring
+
+  tasks:
+    - name: Atualizar pacotes
+      apt:
+        update_cache: yes
+
+    - name: Instalar pacotes necessários
+      apt:
+        name:
+          - docker.io
+          - curl
+        state: present
+
+    - name: Habilitar e iniciar o Docker
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Baixar Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Verificar versão do Docker Compose
+      command: docker-compose --version
+      register: compose_version
+      changed_when: false
+
+    - name: Mostrar versão do Docker Compose
+      debug:
+        msg: "{{ compose_version.stdout }}"
+
+    - name: Criar diretório do projeto
+      file:
+        path: "{{ monitoring_dir }}"
+        state: directory
+
+    - name: Copia docker-compose.yml para a VM
+      copy:
+        src: ../files/docker-compose.yml
+        dest: "{{ monitoring_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Criar prometheus.yml com scrape para Prometheus e Node Exporter
+      copy:
+        dest: "{{ monitoring_dir }}/prometheus.yml"
+        content: |
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+
+            - job_name: 'node-exporter'
+              static_configs:
+                - targets: ['node-exporter:9100']
+
+    - name: Subir os containers com docker-compose
+      command: docker-compose up -d
+      args:
+        chdir: "{{ monitoring_dir }}"
