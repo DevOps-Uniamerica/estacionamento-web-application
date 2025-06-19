@@ -1,5 +1,5 @@
 ---
-- name: Deploy da aplicação no cluster Kubernetes GCP
+- name: Deploy da aplicação no cluster Kubernetes GCP com monitoramento
   hosts: localhost
   connection: local
   gather_facts: false
@@ -10,7 +10,7 @@
     project_id: "celtic-shape-452222-c9"
     docker_user: "{{ docker_user }}"
     app_namespace: "estacionamento"
-    # Definir credenciais consistentes do PostgreSQL
+    monitoring_namespace: "monitoring"
     postgres_user: "postgres"
     postgres_password: "postgres"
     postgres_db: "estacionamento"
@@ -34,16 +34,6 @@
       kubernetes.core.k8s_info:
         api_version: v1
         kind: Node
-      register: nodes_info
-
-    - name: Debug informações do cluster
-      debug:
-        msg: |
-          Cluster conectado com sucesso!
-          Nodes disponíveis: {{ nodes_info.resources | length }}
-          {% for node in nodes_info.resources %}
-          - {{ node.metadata.name }}: {{ node.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first }}
-          {% endfor %}
 
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
@@ -51,6 +41,66 @@
         api_version: v1
         kind: Namespace
         state: present
+
+    - name: Criar namespace de monitoramento
+      kubernetes.core.k8s:
+        name: "{{ monitoring_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Instalar kube-prometheus-stack via Helm
+      community.kubernetes.helm:
+        name: kube-prometheus
+        chart_ref: prometheus-community/kube-prometheus-stack
+        release_namespace: "{{ monitoring_namespace }}"
+        create_namespace: false
+        values:
+          grafana:
+            enabled: false
+          prometheus:
+            prometheusSpec:
+              serviceMonitorSelectorNilUsesHelmValues: false
+              podMonitorSelectorNilUsesHelmValues: false
+        update_repo_cache: true
+
+    - name: Criar ServiceMonitor para backend
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: monitoring.coreos.com/v1
+          kind: ServiceMonitor
+          metadata:
+            name: backend-monitor
+            namespace: "{{ monitoring_namespace }}"
+            labels:
+              release: kube-prometheus
+          spec:
+            selector:
+              matchLabels:
+                app: backend
+            namespaceSelector:
+              matchNames:
+                - "{{ app_namespace }}"
+            endpoints:
+            - port: http
+              interval: 15s
+
+    - name: Criar Service externo para Prometheus
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: prometheus-lb
+            namespace: "{{ monitoring_namespace }}"
+          spec:
+            selector:
+              app.kubernetes.io/name: prometheus
+            ports:
+            - name: web
+              port: 9090
+              targetPort: 9090
+            type: LoadBalancer
 
     - name: Criar Secret para credenciais do PostgreSQL
       kubernetes.core.k8s:
@@ -90,11 +140,6 @@
         name: postgres-pvc
         namespace: "{{ app_namespace }}"
       register: pvc_info
-
-    - name: Debug PVC
-      debug:
-        msg: |
-          PVC Status: {{ pvc_info.resources[0].status.phase if pvc_info.resources else 'Not found' }}
 
     - name: Deploy do PostgreSQL
       kubernetes.core.k8s:
@@ -205,14 +250,6 @@
         wait_timeout: 120
       register: postgres_deployment
 
-    - name: Verificar status do deployment PostgreSQL
-      debug:
-        msg: |
-          PostgreSQL Deployment Status:
-          Available Replicas: {{ postgres_deployment.resources[0].status.availableReplicas | default(0) }}
-          Ready Replicas: {{ postgres_deployment.resources[0].status.readyReplicas | default(0) }}
-          Replicas: {{ postgres_deployment.resources[0].status.replicas | default(0) }}
-
     - name: Aguardar PostgreSQL pod ficar pronto (com diagnóstico)
       block:
         - name: Aguardar PostgreSQL ficar pronto
@@ -249,43 +286,9 @@
             done
           register: postgres_debug_logs
 
-        - name: Debug PostgreSQL detalhado
-          debug:
-            msg: |
-              ❌ PostgreSQL não ficou pronto em 5 minutos!
-              
-              Pods encontrados: {{ postgres_pods_debug.resources | length }}
-              {% for pod in postgres_pods_debug.resources %}
-              
-              Pod: {{ pod.metadata.name }}
-              - Phase: {{ pod.status.phase }}
-              - Node: {{ pod.spec.nodeName | default('N/A') }}
-              - Ready: {{ pod.status.containerStatuses[0].ready if pod.status.containerStatuses else 'N/A' }}
-              - Restart Count: {{ pod.status.containerStatuses[0].restartCount if pod.status.containerStatuses else 'N/A' }}
-              - Image: {{ pod.status.containerStatuses[0].image if pod.status.containerStatuses else 'N/A' }}
-              {% if pod.status.containerStatuses and pod.status.containerStatuses[0].state %}
-              - State: {{ pod.status.containerStatuses[0].state.keys() | list | first }}
-              {% endif %}
-              {% if pod.status.conditions %}
-              - Conditions:
-              {% for condition in pod.status.conditions %}
-                - {{ condition.type }}: {{ condition.status }} ({{ condition.reason | default('N/A') }})
-              {% endfor %}
-              {% endif %}
-              {% endfor %}
-              
-              Debug completo:
-              {{ postgres_debug_logs.stdout }}
-
         - name: Verificar eventos do namespace
           shell: kubectl get events -n {{ app_namespace }} --sort-by='.lastTimestamp'
           register: namespace_events
-
-        - name: Mostrar eventos do namespace
-          debug:
-            msg: |
-              Eventos do namespace {{ app_namespace }}:
-              {{ namespace_events.stdout }}
 
         - name: Verificar recursos do cluster
           shell: |
@@ -297,21 +300,6 @@
             kubectl get storageclass
           register: cluster_resources
 
-        - name: Debug recursos do cluster
-          debug:
-            msg: |
-              Recursos do cluster:
-              {{ cluster_resources.stdout }}
-
-        - name: Falhar com informações detalhadas
-          fail:
-            msg: |
-              PostgreSQL não ficou pronto. Verifique os logs acima para diagnóstico.
-              Possíveis causas:
-              1. Problemas com PVC/storage
-              2. Recursos insuficientes no cluster
-              3. Problemas de rede
-              4. Configuração incorreta do PostgreSQL
 
     - name: Verificar conectividade com PostgreSQL
       shell: |
@@ -320,18 +308,6 @@
           psql -h postgres-service -U {{ postgres_user }} -d {{ postgres_db }} -c "SELECT version();"
       register: postgres_connectivity
       ignore_errors: true
-
-    - name: Debug conectividade PostgreSQL
-      debug:
-        msg: |
-          Teste de conectividade PostgreSQL:
-          {% if postgres_connectivity.rc == 0 %}
-          ✅ Conectividade OK
-          Output: {{ postgres_connectivity.stdout }}
-          {% else %}
-          ❌ Falha na conectividade
-          Error: {{ postgres_connectivity.stderr }}
-          {% endif %}
 
     - name: Deploy do Backend (Spring Boot)
       kubernetes.core.k8s:
@@ -460,17 +436,6 @@
               fi
             done
           register: backend_debug_logs
-
-        - name: Debug Backend detalhado
-          debug:
-            msg: |
-              ❌ Backend não ficou pronto em 6+ minutos!
-              
-              {{ backend_debug_logs.stdout }}
-
-        - name: Continuar sem falhar (para não bloquear o frontend)
-          debug:
-            msg: "Backend não ficou pronto, mas continuando com o deploy do frontend..."
 
     - name: Criar ConfigMap para configuração do Nginx (Frontend)
       kubernetes.core.k8s:
