@@ -85,7 +85,8 @@
         executable: /bin/bash
 
     - name: Alterar serviço prometheus-server para LoadBalancer
-      shell: kubectl patch svc prometheus-server -n monitoring -p '{"spec": {"type": "LoadBalancer"}}'
+      shell: |
+        kubectl patch svc prometheus-server -n monitoring -p '{"spec": {"type": "LoadBalancer"}}'
       args:
         executable: /bin/bash
 
