@@ -45,6 +45,45 @@
           - {{ node.metadata.name }}: {{ node.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first }}
           {% endfor %}
 
+    - name: Instalar Prometheus via Helm
+      community.kubernetes.helm:
+        name: prometheus
+        chart_ref: prometheus-community/prometheus
+        release_namespace: monitoring
+        create_namespace: true
+        update_repo_cache: true
+        state: present
+        wait: true
+      register: helm_result
+
+    - name: Alterar Service do Prometheus para LoadBalancer
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: Service
+        name: prometheus-server
+        namespace: monitoring
+        merge_type: strategic
+        definition:
+          spec:
+            type: LoadBalancer
+
+    - name: Aguardar IP externo do Prometheus
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Service
+        name: prometheus-server
+        namespace: monitoring
+      register: prometheus_svc_info
+      until: prometheus_svc_info.resources[0].status.loadBalancer.ingress is defined
+      retries: 10
+      delay: 15
+
+    - name: Exibir IP externo do Prometheus
+      debug:
+        msg: >
+          🌐 Prometheus está acessível via:
+          http://{{ prometheus_svc_info.resources[0].status.loadBalancer.ingress[0].ip }}
+          
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
         name: "{{ app_namespace }}"
