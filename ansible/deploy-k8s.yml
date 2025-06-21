@@ -49,6 +49,16 @@
       shell: helm uninstall prometheus -n monitoring || true
       args:
         executable: /bin/bash
+        
+    - name: Adicionar repositório prometheus-community ao Helm
+      shell: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+      args:
+        executable: /bin/bash
+
+    - name: Atualizar repositórios Helm
+      shell: helm repo update
+      args:
+        executable: /bin/bash
 
     - name: Instalar Prometheus via Helm
       shell: |
