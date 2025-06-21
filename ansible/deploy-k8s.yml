@@ -51,57 +51,17 @@
       args:
         executable: /bin/bash
 
-    - name: Adicionar repositório prometheus-community ao Helm
-      shell: |
-        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
-      args:
-        executable: /bin/bash
-
-    - name: Atualizar repositórios Helm
-      shell: helm repo update
-      args:
-        executable: /bin/bash
-
     - name: Instalar Prometheus via Helm
       shell: |
-        helm install prometheus prometheus-community/prometheus \
-          --namespace monitoring \
-          --create-namespace \
-          --wait
+        helm install prometheus prometheus-community/prometheus --namespace monitoring --create-namespace
       args:
         executable: /bin/bash
 
-    - name: Aguardar até o serviço prometheus-server ser criado
-      shell: |
-        for i in {1..20}; do
-          if kubectl get svc prometheus-server -n monitoring >/dev/null 2>&1; then
-            echo "✅ Serviço prometheus-server encontrado."
-            exit 0
-          fi
-          echo "⏳ Aguardando criação do prometheus-server..."
-          sleep 5
-        done
-        echo "❌ Serviço prometheus-server não foi encontrado após aguardar." >&2
-        exit 1
-      args:
-        executable: /bin/bash
-
-    - name: Alterar serviço prometheus-server para LoadBalancer
+    - name: Alterar o tipo do Service prometheus-server para LoadBalancer
       shell: |
         kubectl patch svc prometheus-server -n monitoring -p '{"spec": {"type": "LoadBalancer"}}'
       args:
         executable: /bin/bash
-
-    - name: Exibir serviços no namespace monitoring
-      shell: kubectl get svc -n monitoring
-      register: prometheus_services
-      args:
-        executable: /bin/bash
-
-    - name: Mostrar saída dos serviços do Prometheus
-      debug:
-        msg: "{{ prometheus_services.stdout }}"
-
 
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
