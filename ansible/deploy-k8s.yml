@@ -45,6 +45,26 @@
           - {{ node.metadata.name }}: {{ node.status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first }}
           {% endfor %}
 
+    - name: Adicionar repositório prometheus-community ao Helm
+      shell: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+      args:
+        executable: /bin/bash
+
+    - name: Atualizar repositórios Helm
+      shell: helm repo update
+      args:
+        executable: /bin/bash
+
+    - name: Verificar se o repositório prometheus-community foi adicionado
+      shell: helm repo list
+      register: helm_repos
+      args:
+        executable: /bin/bash
+
+    - name: Mostrar repositórios helm configurados
+      debug:
+        var: helm_repos.stdout_lines
+
     - name: Desinstalar Prometheus se já estiver instalado
       shell: |
         helm uninstall prometheus -n monitoring || true
