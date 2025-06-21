@@ -53,17 +53,24 @@
           args:
             executable: /bin/bash
 
-    - name: Instalar Prometheus via Helm
-      shell: |
-        helm install prometheus prometheus-community/prometheus --namespace monitoring --create-namespace 
-      args:
-        executable: /bin/bash
+    - name: Garantir repositório prometheus-community no Helm
+      kubernetes.core.helm_repository:
+        name: prometheus-community
+        repo_url: https://prometheus-community.github.io/helm-charts
 
-    - name: Alterar serviço prometheus-server para LoadBalancer
-      shell: |
-         kubectl patch svc prometheus-server -n monitoring -p '{"spec": {"type": "LoadBalancer"}}'
-      args:
-        executable: /bin/bash
+    - name: Instalar Prometheus via Helm (módulo)
+      kubernetes.core.helm:
+        name: prometheus
+        chart_ref: prometheus-community/prometheus
+        release_namespace: monitoring
+        create_namespace: true
+        wait: true
+        values:
+          server:
+            service:
+              type: LoadBalancer
+
+
 
     - name: Exibir serviços no namespace monitoring
       shell: | 
