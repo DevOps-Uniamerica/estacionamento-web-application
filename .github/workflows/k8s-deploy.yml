@@ -9,7 +9,6 @@ jobs:
   check-infrastructure:
     name: Verificar Infraestrutura Existente
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
     outputs:
       cluster_exists: ${{ steps.check.outputs.cluster_exists }}
       cluster_name: ${{ steps.check.outputs.cluster_name }}
