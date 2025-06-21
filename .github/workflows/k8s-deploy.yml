@@ -181,4 +181,6 @@ jobs:
           echo "================================"
           kubectl get all -n estacionamento
           echo "================================"
+          kubectl get all -n monitoring
+          echo "================================"
           echo "✅ Deploy concluído!"
