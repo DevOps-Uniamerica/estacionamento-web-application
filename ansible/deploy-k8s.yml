@@ -46,12 +46,14 @@
           {% endfor %}
 
     - name: Desinstalar Prometheus se já estiver instalado
-      shell: helm uninstall prometheus -n monitoring || true
+      shell: |
+        helm uninstall prometheus -n monitoring || true
       args:
         executable: /bin/bash
-        
+
     - name: Adicionar repositório prometheus-community ao Helm
-      shell: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+      shell: |
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
       args:
         executable: /bin/bash
 
@@ -73,12 +75,14 @@
       shell: |
         for i in {1..20}; do
           if kubectl get svc prometheus-server -n monitoring >/dev/null 2>&1; then
-            echo "Serviço prometheus-server encontrado."
-            break
+            echo "✅ Serviço prometheus-server encontrado."
+            exit 0
           fi
-          echo "Aguardando criação do prometheus-server..."
+          echo "⏳ Aguardando criação do prometheus-server..."
           sleep 5
         done
+        echo "❌ Serviço prometheus-server não foi encontrado após aguardar." >&2
+        exit 1
       args:
         executable: /bin/bash
 
@@ -97,6 +101,7 @@
     - name: Mostrar saída dos serviços do Prometheus
       debug:
         msg: "{{ prometheus_services.stdout }}"
+
 
     - name: Criar namespace da aplicação
       kubernetes.core.k8s:
