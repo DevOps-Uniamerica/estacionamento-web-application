@@ -2,9 +2,9 @@ name: CI Pipeline
  
 on:
   push:
-    branches: [ develop ]
+    branches: [ staging ]
   pull_request:
-    branches: [ develop ]
+    branches: [ staging ]
 
 jobs:
   backend:
@@ -140,7 +140,7 @@ jobs:
         with:
           context: ./interface
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/frontend-develop:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/estacionamento-frontend:latest
 
   deploy-frontend:
     name: Atualizar deployment na VM
@@ -160,6 +160,6 @@ jobs:
       - name: Atualizar deployment frontend na VM
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          kubectl set image deployment/estacionamento-frontend frontend=fpeiter/frontend-main:latest -n develop
+          kubectl set image deployment/estacionamento-frontend frontend=fpeiter/estacionamento-frontend:latest -n develop
           kubectl rollout restart deployment estacionamento-frontend -n develop
           EOF
