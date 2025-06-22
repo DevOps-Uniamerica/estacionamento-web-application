@@ -98,6 +98,17 @@ CPU & Memória
 
 Status dos Pods
 
+Comando para configurar o monitoramneto
+Entre no cluster e adicione o seguinte comando
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo update
+  helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace
+  kubectl patch svc prometheus-kube-prometheus-prometheus -n monitoring -p '{"spec": {"type": "LoadBalancer"}}'
+  kubectl get svc -n monitoring
+  
+  315
+
 ## Como Executar Localmente
 
 1. Clone o repositório:
