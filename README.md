@@ -15,6 +15,7 @@ Este repositório contém a aplicação de gerenciamento de estacionamento, incl
 * [Pré-requisitos](#pré-requisitos)
 * [Estrutura do Projeto](#estrutura-do-projeto)
 * [Arquitetura](#arquitetura)
+* [Monitoramneto](#monitoramento)
 * [Como Executar Localmente](#como-executar-localmente)
 * [Variáveis de Ambiente](#variáveis-de-ambiente)
 * [Pipelines CI/CD](#pipelines-cicd)
