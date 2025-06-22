@@ -84,6 +84,19 @@ flowchart LR
   A2 -->|"Metrics"| M2
 ```
 
+Monitoramento
+Os ambientes Stage e Produção têm um stack de observabilidade composto por Prometheus (coleta de métricas) e Grafana (visualização de dashboards):
+
+Os manifests e Helm charts de monitoramento estão em kubernetes/monitoring/.
+
+Métricas padrão coletadas: CPU, memória, status dos pods e health checks.
+
+Dashboards pré-configurados:
+
+CPU & Memória
+
+Status dos Pods
+
 ## Como Executar Localmente
 
 1. Clone o repositório:
