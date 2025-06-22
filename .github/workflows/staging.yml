@@ -71,27 +71,27 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/backend-develop:latest
 
-  deploy-backend:
-    name: Deploy Backend na VM
-    needs: [build-push-backend]
-    runs-on: ubuntu-latest
+  #deploy-backend:
+  #  name: Deploy Backend na VM
+  #  needs: [build-push-backend]
+  #  runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
+  #  steps:
+  #    - name: Checkout do código
+  #      uses: actions/checkout@v3
 
-      - name: Configurar chave SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+  #    - name: Configurar chave SSH
+  #      run: |
+  #        mkdir -p ~/.ssh
+  #        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+  #        chmod 600 ~/.ssh/id_rsa
 
-      - name: Atualizar deployment backend na VM
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          kubectl set image deployment/estacionamento-backend backend=fpeiter/backend-main:latest -n develop
-          kubectl rollout restart deployment estacionamento-backend -n develop
-          EOF
+  #    - name: Atualizar deployment backend na VM
+  #      run: |
+  #        ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
+  #        kubectl set image deployment/estacionamento-backend backend=fpeiter/backend-main:latest -n develop
+  #        kubectl rollout restart deployment estacionamento-backend -n develop
+  #        EOF
           
   frontend:
     name: Build e Teste do Frontend
@@ -142,24 +142,24 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/frontend-develop:latest
 
-  deploy-frontend:
-    name: Atualizar deployment na VM
-    needs: [build-push-frontend]
-    runs-on: ubuntu-latest
+  #deploy-frontend:
+  #  name: Atualizar deployment na VM
+  #  needs: [build-push-frontend]
+  #  runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v3
+  #  steps:
+  #    - name: Checkout do código
+  #      uses: actions/checkout@v3
 
-      - name: Configurar chave SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+  #    - name: Configurar chave SSH
+  #      run: |
+  #        mkdir -p ~/.ssh
+  #        echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+  #        chmod 600 ~/.ssh/id_rsa
 
-      - name: Atualizar deployment frontend na VM
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-          kubectl set image deployment/estacionamento-frontend frontend=fpeiter/estacionamento-frontend:latest -n develop
-          kubectl rollout restart deployment estacionamento-frontend -n develop
-          EOF
+  #    - name: Atualizar deployment frontend na VM
+  #      run: |
+  #        ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
+  #        kubectl set image deployment/estacionamento-frontend frontend=fpeiter/estacionamento-frontend:latest -n develop
+  #        kubectl rollout restart deployment estacionamento-frontend -n develop
+  #        EOF
