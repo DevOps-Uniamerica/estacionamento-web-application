@@ -2,7 +2,7 @@
     <div class="container-fluid p-4 bg-white rounded-4 shadow-sm">
         <div class="row align-items-center mb-4">
             <div class="col-md-10 text-start">
-                <p class="fs-4 fw-semibold text-primary">Marca PIPELINE</p>
+                <p class="fs-4 fw-semibold text-primary">Marca</p>
             </div>
             <div class="col-md-2">
                 <div class="d-grid">
