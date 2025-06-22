@@ -160,6 +160,6 @@ jobs:
   #    - name: Atualizar deployment frontend na VM
   #      run: |
   #        ssh -o StrictHostKeyChecking=no ${{ secrets.GCP_USER }}@${{ secrets.MAIN_HOST }} << 'EOF'
-  #        kubectl set image deployment/estacionamento-frontend frontend=fpeiter/estacionamento-frontend:latest -n develop
+  #        kubectl set image deployment/estacionamento-frontend frontend=fpeiter/frontend-develop:latest -n develop
   #        kubectl rollout restart deployment estacionamento-frontend -n develop
   #        EOF
