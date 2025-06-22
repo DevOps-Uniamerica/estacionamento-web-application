@@ -85,7 +85,7 @@ flowchart LR
   A2 -->|"Metrics"| M2
 ```
 
-Monitoramento
+## Monitoramento
 Os ambientes Stage e Produção têm um stack de observabilidade composto por Prometheus (coleta de métricas) e Grafana (visualização de dashboards):
 
 Os manifests e Helm charts de monitoramento estão em kubernetes/monitoring/.
